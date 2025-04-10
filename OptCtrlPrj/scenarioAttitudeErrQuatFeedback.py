@@ -10,11 +10,13 @@ import os
 
 import matplotlib.pyplot as plt
 import numpy as np
+
 # The path to the location of Basilisk
 # Used to get the location of supporting data.
 from Basilisk import __path__
 # import message declarations
 from Basilisk.architecture import messaging
+from Basilisk.architecture import bskLogging
 from Basilisk.fswAlgorithms import attTrackingError
 # import FSW Algorithm related support
 # from Basilisk.fswAlgorithms import mrpFeedback
@@ -58,7 +60,7 @@ def run(show_plots):
     scSim = SimulationBaseClass.SimBaseClass()
 
     # set the simulation time variable used later on
-    simulationTime = macros.min2nano(10.)
+    simulationTime = macros.min2nano(5.)
 
     #
     #  create the simulation process
@@ -237,10 +239,14 @@ class errQuatFeedback(sysModel.SysModel):
     def __init__(self):
         super(errQuatFeedback, self).__init__()
 
-        # Proportional gain term used in control
-        self.K = 0
-        # Derivative gain term used in control
-        self.P = 0
+        # LQR determined gains
+        self.K1 = np.array([0,0,0], [0,0,0], [0,0,0])
+        self.K2 = np.array([0,0,0], [0,0,0], [0,0,0])
+
+        # LQR state cost weight (Q) and control cost weight (R) for cost calc
+        self.Q = np.zeros((6,6))
+        self.R = np.zeros((3,3))
+        
         # Input guidance structure message
         self.guidInMsg = messaging.AttGuidMsgReader()
         # Output body torque message name
@@ -250,18 +256,22 @@ class errQuatFeedback(sysModel.SysModel):
 
         # 
     def Reset(self, CurrentSimNanos):
-        # Ensure that self.dataInMsg is linked
-        if not self.dataInMsg.isLinked():
+        # Ensure that self.dataInMsg's are linked
+        if not self.guidInMsg.isLinked():
             self.bskLogger.bskLog(
-                bskLogging.BSK_ERROR, "TestPythonModule.dataInMsg is not linked."
+                bskLogging.BSK_ERROR, "errQuatFeedback.guidInMsg is not linked."
+            )
+        if not self.cmdTorqueOutMsg.isLinked():
+            self.bskLogger.bskLog(
+                bskLogging.BSK_ERROR, "errQuatFeedback.cmdTorqueOutMsg is not linked."
             )
 
-        # Initialiazing self.dataOutMsg
-        payload = self.dataOutMsg.zeroMsgPayload
-        payload.dataVector = np.array([0, 0, 0])
-        self.dataOutMsg.write(payload, CurrentSimNanos, self.moduleID)
+        # Initialiazing self.cmdTorqueMsg
+        cmdTorqueMsg = self.cmdTorqueOutMsg.zeroMsgPayload
+        cmdTorqueMsg.dataVector = np.array([0, 0, 0])
+        self.cmdTorqueOutMsg.write(cmdTorqueMsg, CurrentSimNanos, self.moduleID)
 
-        self.bskLogger.bskLog(bskLogging.BSK_INFORMATION, "Reset in TestPythonModule")
+        self.bskLogger.bskLog(bskLogging.BSK_INFORMATION, "Reset in errQuatFeedback")
 
 
 
@@ -273,27 +283,73 @@ class errQuatFeedback(sysModel.SysModel):
         # 
 
         # Set output message
-        payload = self.dataOutMsg.zeroMsgPayload
-        payload.dataVector = (
-            self.dataOutMsg.read().dataVector + np.array([0, 1, 0]) + inputVector
-        )
-        self.dataOutMsg.write(payload, CurrentSimNanos, self.moduleID)
+        cmdTorqueMsg = self.cmdTorqueOutMsg.zeroMsgPayload
+
+
+
+
+
+        # write output message
+        self.cmdTorqueOutMsg.write(cmdTorqueMsg, CurrentSimNanos, self.moduleID)
+
+
+
+
 
         self.bskLogger.bskLog(
             bskLogging.BSK_INFORMATION,
             f"Python Module ID {self.moduleID} ran Update at {CurrentSimNanos*1e-9}s",
         )
+        # All Python SysModels have self.bskLogger available
+        # The logger level flags (i.e. BSK_INFORMATION) may be
+        # accessed from sysModel
+        if True:
+            """Sample Python module method"""
+            self.bskLogger.bskLog(sysModel.BSK_INFORMATION, f"Time: {CurrentSimNanos * 1.0E-9} s")
+            self.bskLogger.bskLog(sysModel.BSK_INFORMATION, f"TorqueRequestBody: {torqueOutMsgBuffer.torqueRequestBody}")
+            self.bskLogger.bskLog(sysModel.BSK_INFORMATION, f"sigma_BR: {guidMsgBuffer.sigma_BR}")
+            self.bskLogger.bskLog(sysModel.BSK_INFORMATION, f"omega_BR_B: {guidMsgBuffer.omega_BR_B}")
+
+        return
+
+        
 
     
     @staticmethod
-    def calcXiMatFromQuat(quat)
+    def calcXiMatFromQuat(quat):
+        # Ensure quat is a 4x1 numpy array
+        quat = np.array(quat).reshape((4, 1))  # Convert to 4x1 if not already
+        if quat.shape != (4, 1):
+            raise ValueError("Input quaternion must be a 4x1 numpy array.")
         
+        qvec = np.array(quat[1:])
+        qscal = quat[0]
+        #define return mat
+        XiMat = np.zeros((4,3))
+        XiMat[0:2,:] = [qscal*np.identity(3)] + errQuatFeedback.skew(qvec)
+        XiMat[3,:] = -qvec.transpose
         return XiMat
         
     @staticmethod
-    def calcOmegaMatFromVec(vector)
-
+    def calcOmegaMatFromVec(v):
+        # Ensure v is a 3x1 numpy array
+        v = np.array(v).reshape((3, 1))  # Convert to 3x1 if not already
+        if v.shape != (3, 1):
+            raise ValueError("Input vector must be a 3x1 numpy array.")
+        
+        OmegaMat = np.zeros((4,4))
+        OmegaMat[0:2,0:2] = errQuatFeedback.skew(v)
+        OmegaMat[0:2,3] = v
+        OmegaMat[3,0:2] = -v.transpose()
         return OmegaMat
+    
+    @staticmethod
+    def skew(v):
+        return np.array([
+            [0,     -v[2],  v[1]],
+            [v[2],   0,    -v[0]],
+            [-v[1],  v[0],  0]
+        ])
         
 
 
