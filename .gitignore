@@ -60,3 +60,7 @@ venv/
 # Python packaging
 *.egg-info
 build/
+
+# added
+*dummyscripts/*
+*.python-version
