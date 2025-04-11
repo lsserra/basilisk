@@ -35,9 +35,12 @@ from Basilisk.utilities import SimulationBaseClass
 from Basilisk.utilities import macros
 from Basilisk.utilities import unitTestSupport  # general support file with common unit test functions
 from Basilisk.utilities import RigidBodyKinematics as rbk
+from Basilisk.utilities import SpherePlot
+
 # attempt to import vizard
 from Basilisk.utilities import vizSupport
 from Basilisk.architecture import sysModel
+
 
 bskPath = __path__[0]
 fileName = os.path.basename(os.path.splitext(__file__)[0])
@@ -149,8 +152,6 @@ def run(show_plots):
     #
 
     ## DOC: quat = [q,Q_vec]'
-
-
     # setup desired attitude quatBodyRateAccelPropagation guidance module 
     attDesPropObj = quatBodyRateAccelPropagation()
     attDesPropObj.ModelTag = "quatDesProp"
@@ -174,7 +175,7 @@ def run(show_plots):
     #
     #   Setup data logging before the simulation is initialized
     #
-    numDataPoints = 50
+    numDataPoints = 100
     samplingTime = unitTestSupport.samplingTime(simulationTime, simulationTimeStep, numDataPoints)
     desAttlog = attDesPropObj.currentDesAttMsgOut.recorder(samplingTime)
     attErrorLog = attError.attGuidOutMsg.recorder(samplingTime)
@@ -215,14 +216,15 @@ def run(show_plots):
     #   retrieve the logged data
     #
     dataLr = errQuatLog.torqueRequestBody
-    dataSigmaBR = attErrorLog.sigma_BR
-    dataOmegaBR = attErrorLog.omega_BR_B
+    dataSigmaBR = attErrorLog.sigma_BR 
+    dataOmegaBR = attErrorLog.omega_BR_B 
     timeAxis = attErrorLog.times()
     np.set_printoptions(precision=16)
 
     #
     #   plot the results
     #
+
     plt.close("all")  # clears out plots from earlier test runs
     plt.figure(1)
     for idx in range(3):
@@ -232,6 +234,7 @@ def run(show_plots):
     plt.legend(loc='lower right')
     plt.xlabel('Time [min]')
     plt.ylabel(r'Attitude Error $\sigma_{B/R}$')
+    plt.grid(True,'both','both')
     figureList = {}
     pltName = fileName + "1"
     figureList[pltName] = plt.figure(1)
@@ -244,6 +247,7 @@ def run(show_plots):
     plt.legend(loc='lower right')
     plt.xlabel('Time [min]')
     plt.ylabel('Control Torque $L_r$ [Nm]')
+    plt.grid(True,'both','both')
     pltName = fileName + "2"
     figureList[pltName] = plt.figure(2)
 
@@ -255,6 +259,7 @@ def run(show_plots):
     plt.legend(loc='lower right')
     plt.xlabel('Time [min]')
     plt.ylabel('Rate Tracking Error [rad/s] ')
+    plt.grid(True,'both','both')
 
     if show_plots:
         plt.show()
@@ -283,6 +288,7 @@ class quatBodyRateAccelPropagation(sysModel.SysModel):
     
     def Reset(self, CurrentSimNanos):
         """insert reset"""
+        return
 
     def UpdateState(self, CurrentSimNanos):
         
@@ -324,6 +330,8 @@ class quatBodyRateAccelPropagation(sysModel.SysModel):
         # set for next iteration
         self.priorTime = CurrentSimNanos * macros.NANO2SEC
         self.last_q_ItoB_des = self.current_q_ItoB_des
+
+        return
 
 
     @staticmethod
@@ -379,6 +387,7 @@ class errQuatFeedback(sysModel.SysModel):
         self.bskLogger.bskLog(bskLogging.BSK_INFORMATION, "Reset in errQuatFeedback")
 
         '''
+        return
 
 
     def UpdateState(self, CurrentSimNanos):
