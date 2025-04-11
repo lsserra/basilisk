@@ -10,6 +10,8 @@ import os
 
 import matplotlib.pyplot as plt
 import numpy as np
+from scipy.integrate import solve_ivp
+
 
 # The path to the location of Basilisk
 # Used to get the location of supporting data.
@@ -110,25 +112,16 @@ def run(show_plots):
 
     ## DOC: quat = [q,Q_vec]'
 
-    # write a constant desired atittude
-    #
-    # Reference Frame Message = ECI frame
-    #
-    RefStateOutData = messaging.AttRefMsgPayload()  # Create a structure for the input message
-    sigma_R0N = rbk.EP2MRP(np.array([1, 0 , 0, 0])) # reference frame = ECI frame
-    RefStateOutData.sigma_RN = sigma_R0N
-    omega_R0N_N = np.array([0.0, 0.0, 0.0]) # desired ang rate | LEO orbit, 90min/2pi -> .0011 rad/s
-    RefStateOutData.omega_RN_N = omega_R0N_N
-    domega_R0N_N = np.array([0.0, 0.0, 0.0]) # desired ang accel
-    RefStateOutData.domega_RN_N = domega_R0N_N
-    refStateMsg = messaging.AttRefMsg().write(RefStateOutData)
 
-    # setup inertial3Dspin guidance module 
-    # R = body , R0 = ECI as defined above
-    inertial3DSpinObj = inertial3DSpin.inertial3DSpin()
-    inertial3DSpinObj.ModelTag = "inertial3D"
-    scSim.AddModelToTask(simTaskName, inertial3DSpinObj)
-    inertial3DSpinObj.omega_RR0_R0 = np.array([0.0, 0.0011, 0.0])  # set the desired inertial orientation
+    # setup desired attitude quatBodyRateAccelPropagation guidance module 
+    attDesPropObj = quatBodyRateAccelPropagation()
+    attDesPropObj.ModelTag = "quatDesProp"
+        # assume q_ItoB(t=0) is identity 
+    attDesPropObj.current_q_ItoB_des = np.array([2*np.sqrt(2), 2*np.sqrt(2), 0.0, 0.0]) #initial des att is 90 deg rot ab inertial x
+    attDesPropObj.last_q_ItoB_des = attDesPropObj.current_q_ItoB_des
+    attDesPropObj.omega_ItoB_B_des = np.array([0.0, 0.0011, 0.0]) # desired ang rate | LEO orbit, 90min/2pi -> .0011 rad/s
+    attDesPropObj.ddtOmega_ItoB_B_des = np.zeros((3,1))
+    scSim.AddModelToTask(simTaskName, attDesPropObj)
 
     # setup the attitude tracking error evaluation module
     attError = attTrackingError.attTrackingError()
@@ -138,8 +131,6 @@ def run(show_plots):
     # setup Error Quaternion closed loop control module
     pyErrQuatCtrlr = errQuatFeedback()
     pyErrQuatCtrlr.ModelTag = "pyErrQuat_FB"
-    pyErrQuatCtrlr.K = 3.5
-    pyErrQuatCtrlr.P = 30.0
     scSim.AddModelToTask(simTaskName, pyErrQuatCtrlr)
 
     #
@@ -147,18 +138,23 @@ def run(show_plots):
     #
     numDataPoints = 50
     samplingTime = unitTestSupport.samplingTime(simulationTime, simulationTimeStep, numDataPoints)
+    desAttlog = attDesPropObj.currentDesAttMsg.recorder(samplingTime)
     attErrorLog = attError.attGuidOutMsg.recorder(samplingTime)
-    mrpLog = pyErrQuatCtrlr.cmdTorqueOutMsg.recorder(samplingTime)
+    errQuatLog = pyErrQuatCtrlr.cmdTorqueOutMsg.recorder(samplingTime)
+    scSim.AddModelToTask(simTaskName, desAttlog)
     scSim.AddModelToTask(simTaskName, attErrorLog)
-    scSim.AddModelToTask(simTaskName, mrpLog)
+    scSim.AddModelToTask(simTaskName, errQuatLog)
 
     #
     # connect the messages to the modules
     #
     sNavObject.scStateInMsg.subscribeTo(scObject.scStateOutMsg)
+    attDesPropObj.navAttMsgIn.subribeTo(sNavObject.attOutMsg)
     attError.attNavInMsg.subscribeTo(sNavObject.attOutMsg)
-    attError.attRefInMsg.subscribeTo(inertial3DSpinObj.attRefOutMsg)
-    pyErrQuatCtrlr.guidInMsg.subscribeTo(attError.attGuidOutMsg)
+    attError.attRefInMsg.subscribeTo(attDesPropObj.currentDesAttMsg)
+    pyErrQuatCtrlr.navAttMsgIn.subscribeTo(sNavObject.attOutMsg)
+    pyErrQuatCtrlr.scMassIn.subscribeTo(scObject.scMassOutMsg)
+    pyErrQuatCtrlr.desRefAttIn.subscribeTo(attDesPropObj.currentDesAttMsg)
     extFTObject.cmdTorqueInMsg.subscribeTo(pyErrQuatCtrlr.cmdTorqueOutMsg)
 
     # if this scenario is to interface with the BSK Viz, uncomment the following lines
@@ -180,7 +176,7 @@ def run(show_plots):
     #
     #   retrieve the logged data
     #
-    dataLr = mrpLog.torqueRequestBody
+    dataLr = pyErrQuatCtrlr.torqueRequestBody
     dataSigmaBR = attErrorLog.sigma_BR
     dataOmegaBR = attErrorLog.omega_BR_B
     timeAxis = attErrorLog.times()
@@ -232,34 +228,103 @@ def run(show_plots):
 
 
 
+class quatBodyRateAccelPropagation(sysModel.SysModel):
+    def __init__(self):
+        super(quatBodyRateAccelPropagation, self).__init__()
+        # parameters
+        self.navAttMsgIn = messaging.NavAttMsg()
+        self.currentDesAttMsg = messaging.AttRefMsg()
+        self.priorTime = 0
+        
+        # last Desired Attitude
+        self.last_q_ItoB_des = np.array(1, 0, 0, 0)
+        # Current Desired Attitude
+        self.current_q_ItoB_des = np.array(1, 0, 0, 0)
+        self.omega_ItoB_B_des = np.zeros(3)
+        self.ddtOmega_ItoB_B_des = np.zeros(3)
+    
+    def Reset(self, CurrentSimNanos):
+        """insert reset"""
+
+    def UpdateState(self, CurrentSimNanos):
+        
+        # get nav soluiton
+        navSol = self.navAttMsgIn()
+
+        # compute dt
+        if self.priorTime == 0:
+            dt = 0
+        else:
+            dt = (CurrentSimNanos * macros.NANO2SEC) - self.priorTime
+
+        # get last desired attiude
+        last_q_ItoB = rbk.MRP2EP(self.priorAttSol.sigma_RN)
+
+        # integrate
+        omega = self.omega_ItoB_B_des
+        sol = solve_ivp(
+        fun=lambda t, q: quatBodyRateAccelPropagation.quat_derivative(t, q, omega),
+        t_span=[0, dt],
+        y0=last_q_ItoB,
+        method='RK45',
+        rtol=1e-9,
+        atol=1e-9
+        )
+        # brute force normalize quaternion
+        new_q_ItoB_des = sol.y[:, -1]
+        new_q_ItoB_des = new_q_ItoB_des / np.linalg.norm(new_q_ItoB_des)
+        self.current_q_ItoB_des = new_q_ItoB_des
+
+        # publish msg
+        C_ItoB = rbk.MRP2C(navSol.sigma_BN)
+        attRefMsg = messaging.AttRefMsg.zeroMsgPayload
+        attRefMsg.sigma_RN = rbk.EP2MRP(new_q_ItoB_des)
+        attRefMsg.omega_RN_N = C_ItoB @ self.omega_ItoB_B_des
+        attRefMsg.domega_RN_N = C_ItoB @ self.ddtOmega_ItoB_B_des
+        self.currentDesAttMsg.write(attRefMsg, CurrentSimNanos, self.moduleID)
+
+        # set for next iteration
+        self.priorTime = CurrentSimNanos * macros.NANO2SEC
+        self.last_q_ItoB_des = self.current_q_ItoB_des
+
+
+    @staticmethod
+    def quat_derivative(t, q, omega):
+        """ODE function: dq/dt = 0.5 * B(q) * omega"""
+        return 0.5 * rbk.BmatEP(q) @ omega
 
 
 
 class errQuatFeedback(sysModel.SysModel):
     def __init__(self):
         super(errQuatFeedback, self).__init__()
-
+        
         # LQR determined gains
-        self.K1 = np.array([0,0,0], [0,0,0], [0,0,0])
-        self.K2 = np.array([0,0,0], [0,0,0], [0,0,0])
+        self.K1 = np.array([[0.010000000000000009, 0.0, 0.0], [0.0, 0.010000000000000009, 0.0], [0.0, 0.0, 0.010000000000000009]])
+        self.K2 = np.array([[0.1417744687875785, 0.0, 0.0], [0.0, 0.1417744687875785, 0.0], [0.0, 0.0, 0.1417744687875785]])
 
         # LQR state cost weight (Q) and control cost weight (R) for cost calc
-        self.Q = np.zeros((6,6))
-        self.R = np.zeros((3,3))
+        self.Q = np.diag([0.0001, 0.0001, 0.0001, 0.0001, 0.0001, 0.0001])
+        self.R = np.diag([1.0, 1.0, 1.0])
         
-        # Input guidance structure message
-        self.guidInMsg = messaging.AttGuidMsgReader()
-        # Output body torque message name
+        # Input nav att message
+        self.navAttMsgIn = messaging.NavAttMsg()
+        # Input des att message 
+        self.desRefAttIn = messaging.AttRefMsg()
+        # Input sc mass state
+        self.scMassIn = messaging.SCMassPropsMsg()
+        # Output body torque message 
         self.cmdTorqueOutMsg = messaging.CmdTorqueBodyMsg()
 
-        
-
-        # 
     def Reset(self, CurrentSimNanos):
         # Ensure that self.dataInMsg's are linked
-        if not self.guidInMsg.isLinked():
+        if not self.navAttMsgIn.isLinked():
             self.bskLogger.bskLog(
-                bskLogging.BSK_ERROR, "errQuatFeedback.guidInMsg is not linked."
+                bskLogging.BSK_ERROR, "errQuatFeedback.navAttMsgIn is not linked."
+            )
+        if not self.desRefAttIn.isLinked():
+            self.bskLogger.bskLog(
+                bskLogging.BSK_ERROR, "errQuatFeedback.desRefAttIn is not linked."
             )
         if not self.cmdTorqueOutMsg.isLinked():
             self.bskLogger.bskLog(
@@ -267,7 +332,7 @@ class errQuatFeedback(sysModel.SysModel):
             )
 
         # Initialiazing self.cmdTorqueMsg
-        cmdTorqueMsg = self.cmdTorqueOutMsg.zeroMsgPayload
+        cmdTorqueMsg = messaging.CmdTorqueBodyMsg()
         cmdTorqueMsg.dataVector = np.array([0, 0, 0])
         self.cmdTorqueOutMsg.write(cmdTorqueMsg, CurrentSimNanos, self.moduleID)
 
@@ -276,14 +341,47 @@ class errQuatFeedback(sysModel.SysModel):
 
 
     def UpdateState(self, CurrentSimNanos):
-        # Read input message
-        inPayload = self.dataInMsg()
-        inputVector = inPayload.dataVector
-
-        # 
+        
+        # copy nav and des att msg;s
+        navMsgBuffer = self.navAttMsgIn()
+        scMassBuffer = self.scMassIn()
+        desAttMsgBuffer = self.desRefAttIn()
 
         # Set output message
         cmdTorqueMsg = self.cmdTorqueOutMsg.zeroMsgPayload
+
+        
+        ##  optimal output torque to achieve error dynamics with LQR gains
+        # estimates 
+            # w_ItoB_B
+        C_ItoB = rbk.MRP2C(navMsgBuffer.sigma_BN)
+        w = navMsgBuffer.omega_BN_B
+        w_skew = errQuatFeedback.skew(w)
+        q_ItoB = rbk.MRP2EP(navMsgBuffer.sigma_BN)
+        # mass
+        J = scMassBuffer.ISC_PntB_B
+        # desired att
+            # w_ItoB_B
+        w_des = C_ItoB @ desAttMsgBuffer.omega_RN_N
+        w_des_skew = errQuatFeedback.skew(w_des)
+        dotw_des = C_ItoB @ desAttMsgBuffer.domega_RN_N
+        
+        q_ItoB_des = rbk.MRP2EP(desAttMsgBuffer.sigma_RN)
+        dotq_ItoB_des = 0.5 * rbk.BmatEP(q_ItoB_des) * w_des
+        dbleDot_q_ItoB_des = (
+            0.5 * rbk.BmatEP(q_ItoB_des) * dotw_des - 
+            0.25 * (w_des.T @ w_des) * q_ItoB_des
+        )
+
+        L = (
+            ( w_skew @ J @ w ) +
+            ( 2*J @ np.linalg.inv((rbk.BmatEP(q_ItoB_des).T @ rbk.BmatEP(q_ItoB))) ) @
+            
+
+        )
+
+
+
 
 
 
@@ -293,7 +391,7 @@ class errQuatFeedback(sysModel.SysModel):
         self.cmdTorqueOutMsg.write(cmdTorqueMsg, CurrentSimNanos, self.moduleID)
 
 
-
+        
 
 
         self.bskLogger.bskLog(
@@ -311,24 +409,6 @@ class errQuatFeedback(sysModel.SysModel):
             self.bskLogger.bskLog(sysModel.BSK_INFORMATION, f"omega_BR_B: {guidMsgBuffer.omega_BR_B}")
 
         return
-
-        
-
-    
-    @staticmethod
-    def calcXiMatFromQuat(quat):
-        # Ensure quat is a 4x1 numpy array
-        quat = np.array(quat).reshape((4, 1))  # Convert to 4x1 if not already
-        if quat.shape != (4, 1):
-            raise ValueError("Input quaternion must be a 4x1 numpy array.")
-        
-        qvec = np.array(quat[1:])
-        qscal = quat[0]
-        #define return mat
-        XiMat = np.zeros((4,3))
-        XiMat[0:2,:] = [qscal*np.identity(3)] + errQuatFeedback.skew(qvec)
-        XiMat[3,:] = -qvec.transpose
-        return XiMat
         
     @staticmethod
     def calcOmegaMatFromVec(v):
