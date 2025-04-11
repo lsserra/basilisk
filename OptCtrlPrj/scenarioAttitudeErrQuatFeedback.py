@@ -7,6 +7,7 @@
 #
 
 import os
+import math
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -27,6 +28,8 @@ from Basilisk.simulation import extForceTorque
 from Basilisk.simulation import simpleNav
 # import simulation related support
 from Basilisk.simulation import spacecraft
+from Basilisk.utilities import simIncludeGravBody
+from Basilisk.utilities import orbitalMotion
 # import general simulation support files
 from Basilisk.utilities import SimulationBaseClass
 from Basilisk.utilities import macros
@@ -87,11 +90,46 @@ def run(show_plots):
     scObject.hub.mHub = 750.0  # kg - spacecraft mass
     scObject.hub.r_BcB_B = [[0.0], [0.0], [0.0]]  # m - position vector of body-fixed point B relative to CM
     scObject.hub.IHubPntBc_B = unitTestSupport.np2EigenMatrix3d(I)
-    scObject.hub.sigma_BNInit = [[0.1], [0.2], [-0.3]]  # sigma_BN_B
-    scObject.hub.omega_BN_BInit = [[0.001], [-0.01], [0.03]]  # rad/s - omega_BN_B
+    # initial att states
+    scObject.hub.sigma_BNInit = rbk.C2MRP(np.identity(3))  # sigma_BN_B
+    scObject.hub.omega_BN_BInit = [[0.0], [0.0], [0.0]]  # rad/s - omega_BN_B
+
+    # clear prior gravitational body and SPICE setup definitions
+    gravFactory = simIncludeGravBody.gravBodyFactory()
+    # setup Earth Gravity Body
+    earth = gravFactory.createEarth()
+    earth.isCentralBody = True  # ensure this is the central gravitational body
+    mu = earth.mu
+    # attach gravity model to spacecraft
+    gravFactory.addBodiesTo(scObject)
+
+    #
+    #   setup orbit and simulation time
+    #
+    # setup the orbit using classical orbit elements
+    oe = orbitalMotion.ClassicElements()
+    rLEO = 7000. * 1000  # meters
+    rGEO = math.pow(earth.mu / math.pow((2. * np.pi) / (24. * 3600.), 2), 1. / 3.)
+    oe.a = rLEO
+    oe.e = 0.0001
+    oe.i = 0.0 * macros.D2R
+    oe.Omega = 90 * macros.D2R
+    oe.omega = 0.0 * macros.D2R
+    oe.f = 0.0 * macros.D2R
+    rN, vN = orbitalMotion.elem2rv(mu, oe)
+    scObject.hub.r_CN_NInit = rN  # m - r_CN_N
+    scObject.hub.v_CN_NInit = vN  # m - v_CN_N
+
+    # set the simulation time
+    n = np.sqrt(earth.mu / oe.a / oe.a / oe.a)
+    P = 2. * np.pi / n
+    simulationTime = macros.sec2nano(0.25 * P)
 
     # add spacecraft object to the simulation process
     scSim.AddModelToTask(simTaskName, scObject)
+
+    
+
 
     # setup extForceTorque module
     # the control torque is read in through the messaging system
@@ -138,7 +176,7 @@ def run(show_plots):
     #
     numDataPoints = 50
     samplingTime = unitTestSupport.samplingTime(simulationTime, simulationTimeStep, numDataPoints)
-    desAttlog = attDesPropObj.currentDesAttMsg.recorder(samplingTime)
+    desAttlog = attDesPropObj.currentDesAttMsgOut.recorder(samplingTime)
     attErrorLog = attError.attGuidOutMsg.recorder(samplingTime)
     errQuatLog = pyErrQuatCtrlr.cmdTorqueOutMsg.recorder(samplingTime)
     scSim.AddModelToTask(simTaskName, desAttlog)
@@ -149,12 +187,12 @@ def run(show_plots):
     # connect the messages to the modules
     #
     sNavObject.scStateInMsg.subscribeTo(scObject.scStateOutMsg)
-    attDesPropObj.navAttMsgIn.subribeTo(sNavObject.attOutMsg)
+    attDesPropObj.navAttMsgIn.subscribeTo(sNavObject.attOutMsg)
     attError.attNavInMsg.subscribeTo(sNavObject.attOutMsg)
-    attError.attRefInMsg.subscribeTo(attDesPropObj.currentDesAttMsg)
+    attError.attRefInMsg.subscribeTo(attDesPropObj.currentDesAttMsgOut)
     pyErrQuatCtrlr.navAttMsgIn.subscribeTo(sNavObject.attOutMsg)
     pyErrQuatCtrlr.scMassIn.subscribeTo(scObject.scMassOutMsg)
-    pyErrQuatCtrlr.desRefAttIn.subscribeTo(attDesPropObj.currentDesAttMsg)
+    pyErrQuatCtrlr.desRefAttIn.subscribeTo(attDesPropObj.currentDesAttMsgOut)
     extFTObject.cmdTorqueInMsg.subscribeTo(pyErrQuatCtrlr.cmdTorqueOutMsg)
 
     # if this scenario is to interface with the BSK Viz, uncomment the following lines
@@ -176,7 +214,7 @@ def run(show_plots):
     #
     #   retrieve the logged data
     #
-    dataLr = pyErrQuatCtrlr.torqueRequestBody
+    dataLr = errQuatLog.torqueRequestBody
     dataSigmaBR = attErrorLog.sigma_BR
     dataOmegaBR = attErrorLog.omega_BR_B
     timeAxis = attErrorLog.times()
@@ -232,14 +270,14 @@ class quatBodyRateAccelPropagation(sysModel.SysModel):
     def __init__(self):
         super(quatBodyRateAccelPropagation, self).__init__()
         # parameters
-        self.navAttMsgIn = messaging.NavAttMsg()
-        self.currentDesAttMsg = messaging.AttRefMsg()
+        self.navAttMsgIn = messaging.NavAttMsgReader()
+        self.currentDesAttMsgOut = messaging.AttRefMsg()
         self.priorTime = 0
         
         # last Desired Attitude
-        self.last_q_ItoB_des = np.array(1, 0, 0, 0)
+        self.last_q_ItoB_des = np.array([1, 0, 0, 0])
         # Current Desired Attitude
-        self.current_q_ItoB_des = np.array(1, 0, 0, 0)
+        self.current_q_ItoB_des = np.array([1, 0, 0, 0])
         self.omega_ItoB_B_des = np.zeros(3)
         self.ddtOmega_ItoB_B_des = np.zeros(3)
     
@@ -253,18 +291,18 @@ class quatBodyRateAccelPropagation(sysModel.SysModel):
 
         # compute dt
         if self.priorTime == 0:
-            dt = 0
+            dt = 0.0
         else:
             dt = (CurrentSimNanos * macros.NANO2SEC) - self.priorTime
 
         # get last desired attiude
-        last_q_ItoB = rbk.MRP2EP(self.priorAttSol.sigma_RN)
+        last_q_ItoB = self.last_q_ItoB_des
 
         # integrate
         omega = self.omega_ItoB_B_des
         sol = solve_ivp(
         fun=lambda t, q: quatBodyRateAccelPropagation.quat_derivative(t, q, omega),
-        t_span=[0, dt],
+        t_span=[0.0, dt],
         y0=last_q_ItoB,
         method='RK45',
         rtol=1e-9,
@@ -277,11 +315,11 @@ class quatBodyRateAccelPropagation(sysModel.SysModel):
 
         # publish msg
         C_ItoB = rbk.MRP2C(navSol.sigma_BN)
-        attRefMsg = messaging.AttRefMsg.zeroMsgPayload
+        attRefMsg = messaging.AttRefMsgPayload()
         attRefMsg.sigma_RN = rbk.EP2MRP(new_q_ItoB_des)
         attRefMsg.omega_RN_N = C_ItoB @ self.omega_ItoB_B_des
         attRefMsg.domega_RN_N = C_ItoB @ self.ddtOmega_ItoB_B_des
-        self.currentDesAttMsg.write(attRefMsg, CurrentSimNanos, self.moduleID)
+        self.currentDesAttMsgOut.write(attRefMsg, CurrentSimNanos, self.moduleID)
 
         # set for next iteration
         self.priorTime = CurrentSimNanos * macros.NANO2SEC
@@ -308,15 +346,17 @@ class errQuatFeedback(sysModel.SysModel):
         self.R = np.diag([1.0, 1.0, 1.0])
         
         # Input nav att message
-        self.navAttMsgIn = messaging.NavAttMsg()
+        self.navAttMsgIn = messaging.NavAttMsgReader()
         # Input des att message 
-        self.desRefAttIn = messaging.AttRefMsg()
+        self.desRefAttIn = messaging.AttRefMsgReader()
         # Input sc mass state
-        self.scMassIn = messaging.SCMassPropsMsg()
+        self.scMassIn = messaging.SCMassPropsMsgReader()
         # Output body torque message 
         self.cmdTorqueOutMsg = messaging.CmdTorqueBodyMsg()
 
     def Reset(self, CurrentSimNanos):
+        '''
+
         # Ensure that self.dataInMsg's are linked
         if not self.navAttMsgIn.isLinked():
             self.bskLogger.bskLog(
@@ -338,6 +378,7 @@ class errQuatFeedback(sysModel.SysModel):
 
         self.bskLogger.bskLog(bskLogging.BSK_INFORMATION, "Reset in errQuatFeedback")
 
+        '''
 
 
     def UpdateState(self, CurrentSimNanos):
@@ -348,65 +389,64 @@ class errQuatFeedback(sysModel.SysModel):
         desAttMsgBuffer = self.desRefAttIn()
 
         # Set output message
-        cmdTorqueMsg = self.cmdTorqueOutMsg.zeroMsgPayload
+        cmdTorqueMsg = messaging.CmdTorqueBodyMsgPayload()
 
-        
         ##  optimal output torque to achieve error dynamics with LQR gains
         # estimates 
             # w_ItoB_B
         C_ItoB = rbk.MRP2C(navMsgBuffer.sigma_BN)
         w = navMsgBuffer.omega_BN_B
+        w = np.array(w).flatten()
         w_skew = errQuatFeedback.skew(w)
-        q_ItoB = rbk.MRP2EP(navMsgBuffer.sigma_BN)
+        Omega_ = errQuatFeedback.calcOmegaMatFromVec(w)
+        q = rbk.MRP2EP(navMsgBuffer.sigma_BN) # q_ItoB
         # mass
-        J = scMassBuffer.ISC_PntB_B
+        inertia = scMassBuffer.ISC_PntB_B
+        inertia = np.array(inertia)
         # desired att
             # w_ItoB_B
         w_des = C_ItoB @ desAttMsgBuffer.omega_RN_N
         w_des_skew = errQuatFeedback.skew(w_des)
         dotw_des = C_ItoB @ desAttMsgBuffer.domega_RN_N
         
-        q_ItoB_des = rbk.MRP2EP(desAttMsgBuffer.sigma_RN)
-        dotq_ItoB_des = 0.5 * rbk.BmatEP(q_ItoB_des) * w_des
-        dbleDot_q_ItoB_des = (
-            0.5 * rbk.BmatEP(q_ItoB_des) * dotw_des - 
-            0.25 * (w_des.T @ w_des) * q_ItoB_des
+        qd = rbk.MRP2EP(desAttMsgBuffer.sigma_RN) # q_ItoB_des
+        dotqd = 0.5 * rbk.BmatEP(qd) @ w_des
+        dbleDot_qd = (
+            (0.5 * rbk.BmatEP(qd) @ dotw_des) - 
+            (0.25 * (w_des.T @ w_des) * qd)
         )
-
-        L = (
-            ( w_skew @ J @ w ) +
-            ( 2*J @ np.linalg.inv((rbk.BmatEP(q_ItoB_des).T @ rbk.BmatEP(q_ItoB))) ) @
-            
-
+        # applied torque calculation
+        appliedTorque = (
+            ( w_skew @ inertia @ w ) +
+            ( 2.0*inertia @ np.linalg.inv((rbk.BmatEP(qd).T @ rbk.BmatEP(q))) ) @
+            ( (0.25*(w.T @ w) * rbk.BmatEP(qd).T) - (rbk.BmatEP(dotqd).T @ Omega_) -
+             rbk.BmatEP(dbleDot_qd).T - (self.K1 @ rbk.BmatEP(qd).T) - 
+             self.K2 @ (0.5*rbk.BmatEP(qd).T @ Omega_ + rbk.BmatEP(dotqd).T) ) @ q
         )
-
-
-
-
-
-
-
 
         # write output message
+        cmdTorqueMsg.torqueRequestBody = appliedTorque.tolist()
         self.cmdTorqueOutMsg.write(cmdTorqueMsg, CurrentSimNanos, self.moduleID)
 
 
-        
-
-
+        ## logging
         self.bskLogger.bskLog(
             bskLogging.BSK_INFORMATION,
             f"Python Module ID {self.moduleID} ran Update at {CurrentSimNanos*1e-9}s",
         )
+
+
+        # Cost Calculation
+
         # All Python SysModels have self.bskLogger available
         # The logger level flags (i.e. BSK_INFORMATION) may be
         # accessed from sysModel
         if True:
             """Sample Python module method"""
             self.bskLogger.bskLog(sysModel.BSK_INFORMATION, f"Time: {CurrentSimNanos * 1.0E-9} s")
-            self.bskLogger.bskLog(sysModel.BSK_INFORMATION, f"TorqueRequestBody: {torqueOutMsgBuffer.torqueRequestBody}")
-            self.bskLogger.bskLog(sysModel.BSK_INFORMATION, f"sigma_BR: {guidMsgBuffer.sigma_BR}")
-            self.bskLogger.bskLog(sysModel.BSK_INFORMATION, f"omega_BR_B: {guidMsgBuffer.omega_BR_B}")
+            self.bskLogger.bskLog(sysModel.BSK_INFORMATION, f"TorqueRequestBody: {cmdTorqueMsg.torqueRequestBody}")
+            #self.bskLogger.bskLog(sysModel.BSK_INFORMATION, f"sigma_BR: {guidMsgBuffer.sigma_BR}")
+            #self.bskLogger.bskLog(sysModel.BSK_INFORMATION, f"omega_BR_B: {guidMsgBuffer.omega_BR_B}")
 
         return
         
@@ -417,14 +457,21 @@ class errQuatFeedback(sysModel.SysModel):
         if v.shape != (3, 1):
             raise ValueError("Input vector must be a 3x1 numpy array.")
         
-        OmegaMat = np.zeros((4,4))
-        OmegaMat[0:2,0:2] = errQuatFeedback.skew(v)
-        OmegaMat[0:2,3] = v
-        OmegaMat[3,0:2] = -v.transpose()
+        OmegaMat = np.zeros((4, 4))
+        # Fill in top row: 
+        OmegaMat[0, 1:] = -v.T
+        # Fill in left column:
+        OmegaMat[1:, 0] = v[:, 0]
+        # Fill in bottom-right 3x3: 
+        OmegaMat[1:, 1:] = -errQuatFeedback.skew(v)
+
         return OmegaMat
     
     @staticmethod
     def skew(v):
+        v = np.array(v).flatten()  # Ensure it's 1D
+        if v.shape[0] != 3:
+            raise ValueError("Input must be a 3-element vector.")
         return np.array([
             [0,     -v[2],  v[1]],
             [v[2],   0,    -v[0]],
@@ -436,4 +483,4 @@ class errQuatFeedback(sysModel.SysModel):
 
 
 if __name__ == "__main__":
-    run()
+    run(show_plots=True)
