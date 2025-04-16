@@ -6,7 +6,7 @@ A = np.zeros((6,6))
 A[:3,3:] = np.identity(3)  
 B = np.zeros((6,3))
 B[3:,:] = np.identity(3)            
-Q = 1e-4 * np.identity(6)          
+Q = 1e-2 * np.identity(6)          
 R = np.identity(3)                     
 
 # Solve the continuous-time ARE
