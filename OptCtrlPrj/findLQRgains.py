@@ -6,7 +6,11 @@ A = np.zeros((6,6))
 A[:3,3:] = np.identity(3)  
 B = np.zeros((6,3))
 B[3:,:] = np.identity(3)            
-Q = 1e-2 * np.identity(6)          
+Q = np.identity(6)          
+'''
+Q[:3,:3] = 1e-4 * np.identity(3)   
+Q[3:,3:] = 1 * np.identity(3)
+'''
 R = np.identity(3)                     
 
 # Solve the continuous-time ARE
@@ -18,8 +22,10 @@ K1 = K[:,:3]
 K2 = K[:,3:]
 
 # Output the solution
-print("The solution P to the ARE is:")
-print(P)
+print("K1:")
+print(K1)
+print("K2:")
+print(K2)
 
 # write gains and cost matrices to controller 
 
@@ -39,13 +45,13 @@ with open(file_path, 'r') as file:
 # Find and replace the corresponding lines
 for i, line in enumerate(lines):
     if 'self.K1 =' in line:
-        lines[i] = '\t\t' +K1_str + '\n'
+        lines[i] = '        ' +K1_str + '\n'
     elif 'self.K2 =' in line:
-        lines[i] = '\t\t' + K2_str + '\n'
+        lines[i] = '        ' + K2_str + '\n'
     elif 'self.Q =' in line:
-        lines[i] = '\t\t' + Q_str + '\n'
+        lines[i] = '        ' + Q_str + '\n'
     elif 'self.R =' in line:
-        lines[i] = '\t\t' + R_str + '\n'
+        lines[i] = '        ' + R_str + '\n'
 
 # Write the updated lines back to the file
 with open(file_path, 'w') as file:
