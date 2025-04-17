@@ -6,7 +6,7 @@ A = np.zeros((6,6))
 A[:3,3:] = np.identity(3)  
 B = np.zeros((6,3))
 B[3:,:] = np.identity(3)            
-Q = np.identity(6)          
+Q = 1e-4 * np.identity(6)          
 '''
 Q[:3,:3] = 1e-4 * np.identity(3)   
 Q[3:,3:] = 1 * np.identity(3)
@@ -27,11 +27,43 @@ print(K1)
 print("K2:")
 print(K2)
 
+
+## pole placement method
+import numpy as np
+from scipy.signal import place_poles
+
+# Natural frequency and damping ratio
+wn = 0.1  # rad/s
+damp = 0.9
+
+# Compute poles (real because damping ratio > 1)
+real_part = -damp * wn
+imag_part = wn * np.sqrt(1 - damp**2)
+
+s1 = complex(real_part, imag_part)
+s2 = complex(real_part, -imag_part)
+# Create a list of desired poles (6 total, repeated)
+p = [s1, s2, s1, s2, s1, s2]
+
+
+# Compute state feedback gain K
+result = place_poles(A, B, p)
+K_pol = result.gain_matrix
+
+print("Desired poles:", p)
+K1_pol = K_pol[:,:3]
+K2_pol = K_pol[:,3:]
+
+# Output the solution
+print("K1:")
+print(K1_pol)
+print("K2:")
+print(K2_pol)
 # write gains and cost matrices to controller 
 
 # Prepare the updated gain and cost matrices as strings
-K1_str = f"self.K1 = np.array({K1.tolist()})"
-K2_str = f"self.K2 = np.array({K2.tolist()})"
+K1_str = f"self.K1 = np.array({K1_pol.tolist()})"
+K2_str = f"self.K2 = np.array({K2_pol.tolist()})"
 Q_str = f"self.Q = np.diag({Q.diagonal().tolist()})"
 R_str = f"self.R = np.diag({R.diagonal().tolist()})"
 

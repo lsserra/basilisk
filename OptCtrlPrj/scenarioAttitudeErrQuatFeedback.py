@@ -142,7 +142,7 @@ def run(show_plots):
     n = np.sqrt(earth.mu / oe.a / oe.a / oe.a)
     P = 2. * np.pi / n
     # simulationTime = macros.sec2nano(0.25 * P)
-    simulationTime = macros.min2nano(3.)
+    simulationTime = macros.min2nano(10.)
 
     # add spacecraft object to the simulation process
     scSim.AddModelToTask(simTaskName, scObject)
@@ -173,9 +173,9 @@ def run(show_plots):
     attDesPropObj.ModelTag = "quatDesProp"
         # assume q_ItoB(t=0) is identity 
     #attDesPropObj.current_q_ItoB_des = np.array([2*np.sqrt(2), 2*np.sqrt(2), 0.0, 0.0]) #initial des att is 90 deg rot ab inertial x
-    attDesPropObj.current_q_ItoB_des = rbk.PRV2EP([macros.D2R*0.0, 0.0, 0.0])
+    attDesPropObj.current_q_ItoB_des = rbk.PRV2EP([macros.D2R*20.0, 0.0, 0.0])
     attDesPropObj.last_q_ItoB_des = attDesPropObj.current_q_ItoB_des
-    attDesPropObj.omega_ItoB_B_des = np.array([macros.D2R*0.0, macros.D2R*0.063,macros.D2R*0.0]) # desired ang rate | LEO orbit, 90min/2pi -> .0011 rad/s
+    attDesPropObj.omega_ItoB_B_des = np.array([macros.D2R*2.0, macros.D2R*0.0,macros.D2R*0.0]) # desired ang rate | LEO orbit, 90min/2pi -> .0011 rad/s
     attDesPropObj.ddtOmega_ItoB_B_des = np.zeros((3,1))
     scSim.AddModelToTask(simTaskName, attDesPropObj)
 
@@ -248,22 +248,9 @@ def run(show_plots):
     #
     #   plot the results
     #
-
+    figureList = {}
     plt.close("all")  # clears out plots from earlier test runs
     plt.figure(1)
-    for idx in range(3):
-        plt.plot(timeAxis * macros.NANO2MIN, dataSigmaBR[:, idx],
-                 color=unitTestSupport.getLineColor(idx, 3),
-                 label=r'$\sigma_' + str(idx) + '$')
-    plt.legend(loc='lower right')
-    plt.xlabel('Time [min]')
-    plt.ylabel(r'Attitude Error $\sigma_{B/R}$ [deg]')
-    plt.grid(True,'both','both')
-    figureList = {}
-    pltName = fileName + "1"
-    figureList[pltName] = plt.figure(1)
-
-    plt.figure(2)
     for idx in range(3):
         plt.plot(timeAxis * macros.NANO2MIN, dataLr[:, idx],
                  color=unitTestSupport.getLineColor(idx, 3),
@@ -273,7 +260,8 @@ def run(show_plots):
     plt.ylabel('Control Torque $L_r$ [Nm]')
     plt.grid(True,'both','both')
     pltName = fileName + "2"
-    figureList[pltName] = plt.figure(2)
+    figureList[pltName] = plt.figure(1)
+
 
     plt.figure(3)
     for idx in range(3):
@@ -284,6 +272,56 @@ def run(show_plots):
     plt.xlabel('Time [min]')
     plt.ylabel('Rate Tracking Error [deg/s] ')
     plt.grid(True,'both','both')
+
+   
+    plt.figure(2)
+    for idx in range(3):
+        plt.plot(timeAxis * macros.NANO2MIN, dataSigmaBR[:, idx],
+                 color=unitTestSupport.getLineColor(idx, 3),
+                 label=r'$\sigma_' + str(idx) + '$')
+    plt.legend(loc='lower right')
+    plt.xlabel('Time [min]')
+    plt.ylabel(r'Attitude Error $\sigma_{B/R}$ [deg]')
+    plt.grid(True,'both','both')
+    
+    pltName = fileName + "1"
+    figureList[pltName] = plt.figure(2)
+
+    ## my own attitude error
+    # desired quat
+    mrp_ItoB_des = desAttlog.sigma_RN
+    mrp_ItoB_nav = navAttSolLog.sigma_BN
+    attTime = desAttlog.times()
+
+    # store error euler vec
+    bodyEulerErrorVec_store = np.zeros(([mrp_ItoB_nav.shape[0],3]))
+    for i in range(mrp_ItoB_des.shape[0]):
+        q_ItoB_des_i = rbk.MRP2EP(mrp_ItoB_des[i,:])
+        q_ItoB_nav_i = rbk.MRP2EP(mrp_ItoB_nav[i,:])
+        bodyEulerErrorVec_store[i,:] = computeEulerVecAttErrorFromQuats(q_ItoB_nav_i,q_ItoB_des_i)
+
+    plt.figure(4)
+    for idx in range(3):
+        plt.plot(attTime * macros.NANO2MIN, macros.R2D * bodyEulerErrorVec_store[:, idx],
+                 color=unitTestSupport.getLineColor(idx, 3),
+                 label=r'$\sigma_' + str(idx) + '$')
+    plt.legend(loc='lower right')
+    plt.xlabel('Time [min]')
+    plt.ylabel(r'Attitude Error Body Frame [deg]')
+    plt.grid(True,'both','both')
+    title = 'Body Frame Attitude Error'
+    plt.title(title)
+    figureList = {}
+    pltName = title + "1"
+    figureList[pltName] = plt.figure(4)
+
+    
+        
+
+
+
+
+
 
     '''
 ## position
@@ -417,11 +455,11 @@ class errQuatFeedback(sysModel.SysModel):
         super(errQuatFeedback, self).__init__()
         
         # LQR determined gains
-        self.K1 = np.array([[0.9999999999999996, 0.0, 0.0], [0.0, 0.9999999999999997, 0.0], [0.0, 0.0, 0.9999999999999997]])
-        self.K2 = np.array([[1.732050807568878, 0.0, 0.0], [0.0, 1.732050807568878, 0.0], [0.0, 0.0, 1.732050807568878]])
+        self.K1 = np.array([[0.009999999999999966, 1.6412140489928187e-18, 9.233440739038047e-19], [-1.170539564974882e-18, 0.009999999999999964, 3.0859191696933907e-18], [-1.4271048911574266e-18, 2.9191550050885132e-18, 0.00999999999999997]])
+        self.K2 = np.array([[0.17999999999999985, 1.541907306808781e-17, 7.943594551770889e-18], [-1.1757263094300452e-17, 0.17999999999999983, 2.3445702668273742e-17], [-2.0389202161734147e-17, 0.0, 0.17999999999999988]])
 
         # LQR state cost weight (Q) and control cost weight (R) for cost calc
-        self.Q = np.diag([1.0, 1.0, 1.0, 1.0, 1.0, 1.0])
+        self.Q = np.diag([0.0001, 0.0001, 0.0001, 0.0001, 0.0001, 0.0001])
         self.R = np.diag([1.0, 1.0, 1.0])
         
         # Input nav att message
@@ -597,6 +635,32 @@ class errQuatFeedback(sysModel.SysModel):
         ])
         
 
+def computeEulerVecAttErrorFromQuats(q_ref,q_est):
+    # given these are attitde quaternions (rotation from Ref Frame to Obj Frame)
+    # this function returns the Euler Vector of the error in the Obj frame in radians
+    
+    # ensure real pos part of quat
+    if q_ref[0] < 1e-8:
+        q_ref = -q_ref
+    if q_est[0] < 1e-8:
+        q_est = -q_est
+
+    q_est_q = np.quaternion(q_est[0], q_est[1], q_est[2], q_est[3])
+    q_ref_q = np.quaternion(q_ref[0], q_ref[1], q_ref[2], q_ref[3])
+
+    q_diff_q = q_est_q.conj() * q_ref_q
+    q_diff = np.array([q_diff_q.w, q_diff_q.x, q_diff_q.y, q_diff_q.z])
+    # ensure real pos part of quat
+    if q_diff[0] < 1e-8:
+        q_diff = -q_diff
+
+    # protect acos(1) error
+    if (np.abs(1.0 - q_diff[0])) < 1e-12:
+        prvDiff = np.array([0.,0.,0.])
+    else:
+        prvDiff = rbk.EP2PRV(q_diff)
+
+    return prvDiff
 
 
 
