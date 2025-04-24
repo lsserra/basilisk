@@ -1,6 +1,16 @@
 import numpy as np
 from scipy.linalg import solve_continuous_are
 
+def is_observable(A, Q):
+    n = A.shape[0]
+    sqrt_Q = np.linalg.cholesky(Q, upper=False)
+    O = sqrt_Q
+    for i in range(1, n):
+        O = np.vstack((O, sqrt_Q @ np.linalg.matrix_power(A, i)))
+    rank = np.linalg.matrix_rank(O)
+    return rank 
+
+
 # Define the system matrices (for example)
 A = np.zeros((6,6))
 A[:3,3:] = np.identity(3)  
@@ -8,13 +18,22 @@ B = np.zeros((6,3))
 B[3:,:] = np.identity(3)            
 Q = 1e-4 * np.identity(6)          
 '''
-Q[:3,:3] = 1e-4 * np.identity(3)   
+Q[:3,:3] = 1 * np.identity(3)   
 Q[3:,3:] = 1 * np.identity(3)
 '''
-R = np.identity(3)                     
+R = 1 * np.identity(3)                     
+
+
+# check observability of (A,sqrt(Q))
+rankObsMat = is_observable(A,Q)
+print("Rank (A,sqrt(Q) obs mat: ")
+print(rankObsMat)
+
 
 # Solve the continuous-time ARE
 P = solve_continuous_are(A, B, Q, R)
+print("Sinf:")
+print(P)
 
 # opt gains
 K = np.linalg.inv(R) @ B.T @ P
@@ -62,8 +81,10 @@ print(K2_pol)
 # write gains and cost matrices to controller 
 
 # Prepare the updated gain and cost matrices as strings
-K1_str = f"self.K1 = np.array({K1_pol.tolist()})"
-K2_str = f"self.K2 = np.array({K2_pol.tolist()})"
+K1_str = f"self.K1 = np.array({K1.tolist()})"
+K2_str = f"self.K2 = np.array({K2.tolist()})"
+#K1_str = f"self.K1 = np.array({K1.tolist()})"
+#K2_str = f"self.K2 = np.array({K2.tolist()})"
 Q_str = f"self.Q = np.diag({Q.diagonal().tolist()})"
 R_str = f"self.R = np.diag({R.diagonal().tolist()})"
 
@@ -88,3 +109,12 @@ for i, line in enumerate(lines):
 # Write the updated lines back to the file
 with open(file_path, 'w') as file:
     file.writelines(lines)
+
+
+# analyze closed loop dynamics
+A_0 = (A-B@K)
+eig_vals = np.linalg.eigvals(A_0)
+print("Closed-loop eigenvalues:")
+print(eig_vals)
+
+
