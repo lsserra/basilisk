@@ -95,6 +95,7 @@ def run(show_plots):
     scObject = spacecraft.Spacecraft()
     scObject.ModelTag = "bsk-Sat"
     # define the simulation inertia
+    
     '''
     I = [900., 0., 0.,
          0., 800., 0.,
@@ -103,10 +104,14 @@ def run(show_plots):
     I = [30., 10., 5.,
          10., 20., 3.,
          5., 3., 15.]
-    '''
+    
     I = [30., 0., 0.,
          0., 30., 0.,
          0., 0., 30.]
+    '''
+    I = [30., 10., 5.,
+         10., 20., 3.,
+         5., 3., 15.]
     scObject.hub.mHub = 10.0  # kg - spacecraft mass
     
     # scObject.hub.mHub = 750.0  # kg - spacecraft mass
@@ -198,6 +203,7 @@ def run(show_plots):
     #
     numDataPoints = 100
     samplingTime = unitTestSupport.samplingTime(simulationTime, simulationTimeStep, numDataPoints)
+    # algorithmic log
     desAttlog = attDesPropObj.currentDesAttMsgOut.recorder(samplingTime)
     attErrorLog = attError.attGuidOutMsg.recorder(samplingTime)
     errQuatLog = pyErrQuatCtrlr.cmdTorqueOutMsg.recorder(samplingTime)
@@ -208,6 +214,16 @@ def run(show_plots):
     scSim.AddModelToTask(simTaskName, errQuatLog)
     scSim.AddModelToTask(simTaskName, navSolLog)
     scSim.AddModelToTask(simTaskName, navAttSolLog)
+
+    # post process cost log
+    costErrorQLog = pyErrQuatCtrlr.LogErrorQuatStateOutMsg.recorder(samplingTime)
+    costErrorQdotLog = pyErrQuatCtrlr.LogErrorQuatDotStateOutMsg.recorder(samplingTime)
+    costInputCtrlLog = pyErrQuatCtrlr.LogInputCtrlVecOutMsg.recorder(samplingTime)
+    scSim.AddModelToTask(simTaskName, costErrorQLog)
+    scSim.AddModelToTask(simTaskName, costErrorQdotLog)
+    scSim.AddModelToTask(simTaskName, costInputCtrlLog)
+
+
     #
     # connect the messages to the modules
     #
@@ -248,7 +264,7 @@ def run(show_plots):
     dataOmegaBR = attErrorLog.omega_BR_B * macros.R2D 
     timeAxis = attErrorLog.times()
     np.set_printoptions(precision=16)
-
+    
     #
     #   plot the results
     #
@@ -266,7 +282,7 @@ def run(show_plots):
     pltName = fileName + "2"
     figureList[pltName] = plt.figure(1)
 
-
+    '''
     plt.figure(3)
     for idx in range(3):
         plt.plot(timeAxis * macros.NANO2MIN, dataOmegaBR[:, idx],
@@ -290,7 +306,7 @@ def run(show_plots):
     
     pltName = fileName + "1"
     figureList[pltName] = plt.figure(2)
-
+    '''
     ## my own attitude error
     # desired quat
     mrp_ItoB_des = desAttlog.sigma_RN
@@ -354,8 +370,37 @@ def run(show_plots):
     figureList = {}
     pltName = title + "1"
     figureList[pltName] = plt.figure(6)
+
+    
     
         
+    ## post process cost
+    x1Log = costErrorQLog.forceRequestBody
+    x2Log = costErrorQdotLog.forceRequestBody
+    uLog = costInputCtrlLog.forceRequestBody
+    costTime = costErrorQLog.times()
+    Q = pyErrQuatCtrlr.Q
+    R = pyErrQuatCtrlr.R
+    Jk_store = np.zeros(x1Log.shape[0])
+
+    for k in range(x1Log.shape[0]):
+        xk = np.hstack((x1Log[k,:],x2Log[k,:]))
+        uk = uLog[k,:]
+        Jk_store[k] = 0.5 * ((xk.T @ Q @ xk) + (uk.T @ R @ uk))
+    plt.figure(7)
+    plt.plot(costTime * macros.NANO2MIN, Jk_store,
+                 label='Jk*')
+    plt.legend(loc='lower right')
+    plt.xlabel('Time [min]')
+    plt.ylabel(r'Optimal Cost')
+    plt.grid(True,'both','both')
+    title = 'Jk* Optimal Cost'
+    plt.title(title)
+    figureList = {}
+    pltName = title + "1"
+    figureList[pltName] = plt.figure(7)
+
+
 
 
 
@@ -363,7 +408,7 @@ def run(show_plots):
 
 
     '''
-## position
+    ## position
     navSolTime = navSolLog.times()
     navSolPos = navSolLog.r_BN_N
     plt.figure(4)
@@ -512,6 +557,7 @@ class errQuatFeedback(sysModel.SysModel):
         self.Q = np.diag([0.0001, 0.0001, 0.0001, 0.0001, 0.0001, 0.0001])
         self.R = np.diag([1.0, 1.0, 1.0])
         
+        ## Algorithmic related messages 
         # Input nav att message
         self.navAttMsgIn = messaging.NavAttMsgReader()
         # Input des att message 
@@ -520,6 +566,15 @@ class errQuatFeedback(sysModel.SysModel):
         self.scMassIn = messaging.SCMassPropsMsgReader()
         # Output body torque message 
         self.cmdTorqueOutMsg = messaging.CmdTorqueBodyMsg()
+
+        
+        ## Post Process Logging Msgs
+        # error quaternion
+        self.LogErrorQuatStateOutMsg = messaging.CmdForceBodyMsg()
+        # dot error quaternion
+        self.LogErrorQuatDotStateOutMsg = messaging.CmdForceBodyMsg()
+        # control input vec, u
+        self.LogInputCtrlVecOutMsg = messaging.CmdForceBodyMsg()
 
     def Reset(self, CurrentSimNanos):
         
@@ -628,20 +683,32 @@ class errQuatFeedback(sysModel.SysModel):
         cmdTorqueMsg.torqueRequestBody = appliedTorque.tolist()
         self.cmdTorqueOutMsg.write(cmdTorqueMsg, CurrentSimNanos, self.moduleID)
 
+        # Send Messages for Cost Calculation
+        errQuat_vec = rbk.BmatEP(qd).T @ q
+        errQuat_dot_vec = rbk.BmatEP(dotqd).T @ q + rbk.BmatEP(qd).T @ dotq
+        u = (-self.K2 @ errQuat_dot_vec + self.K1 @ errQuat_vec)
+        InvertedMat = np.linalg.inv((rbk.BmatEP(qd).T @ rbk.BmatEP(q)))
+        
+        errorQuatOutMsg = messaging.CmdForceBodyMsgPayload()
+        errorQuatDotOutMsg = messaging.CmdForceBodyMsgPayload()
+        inputCtrlVecOutMsg = messaging.CmdForceBodyMsgPayload()
+
+        errorQuatOutMsg.forceRequestBody = errQuat_vec
+        errorQuatDotOutMsg.forceRequestBody = errQuat_dot_vec
+        inputCtrlVecOutMsg.forceRequestBody = u
+
+        self.LogErrorQuatStateOutMsg.write(errorQuatOutMsg, CurrentSimNanos, self.moduleID)
+        self.LogErrorQuatDotStateOutMsg.write(errorQuatDotOutMsg, CurrentSimNanos, self.moduleID)
+        self.LogInputCtrlVecOutMsg.write(inputCtrlVecOutMsg, CurrentSimNanos, self.moduleID)
+
+
+
 
         ## logging
         self.bskLogger.bskLog(
             bskLogging.BSK_INFORMATION,
             f"Python Module ID {self.moduleID} ran Update at {CurrentSimNanos*1e-9}s",
         )
-
-        errQuat_vec = rbk.BmatEP(qd).T @ q
-        errQuat_dot_vec = rbk.BmatEP(dotqd).T @ q + rbk.BmatEP(qd).T @ dotq
-        u = (-self.K2 @ errQuat_dot_vec + self.K1 @ errQuat_vec)
-        InvertedMat = np.linalg.inv((rbk.BmatEP(qd).T @ rbk.BmatEP(q)))
-
-
-        # Cost Calculation
 
         # All Python SysModels have self.bskLogger available
         # The logger level flags (i.e. BSK_INFORMATION) may be
