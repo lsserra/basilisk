@@ -235,7 +235,7 @@ def run(show_plots, useLargeTumble):
 
     # if this scenario is to interface with the BSK Viz, uncomment the following lines
     vizSupport.enableUnityVisualization(scSim, simTaskName, scObject
-                                        # , saveFile=fileName
+                                         #, saveFile=fileName
                                         )
 
     #

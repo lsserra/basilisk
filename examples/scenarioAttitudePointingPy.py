@@ -75,7 +75,7 @@ regains a stable orientation without tumbling past 180 degrees.
 # Author:   Hanspeter Schaub
 # Creation Date:  Jan. 16, 2021
 #
-
+import math
 import os
 
 import matplotlib.pyplot as plt
@@ -91,12 +91,17 @@ from Basilisk.fswAlgorithms import attTrackingError
 from Basilisk.fswAlgorithms import inertial3D
 from Basilisk.simulation import extForceTorque
 from Basilisk.simulation import simpleNav
+from Basilisk.utilities import simIncludeGravBody
+from Basilisk.utilities import orbitalMotion
+
 # import simulation related support
 from Basilisk.simulation import spacecraft
 # import general simulation support files
 from Basilisk.utilities import SimulationBaseClass
 from Basilisk.utilities import macros
 from Basilisk.utilities import unitTestSupport  # general support file with common unit test functions
+from Basilisk.utilities import RigidBodyKinematics as rbk
+
 # attempt to import vizard
 from Basilisk.utilities import vizSupport
 from Basilisk.architecture import sysModel
@@ -127,7 +132,7 @@ def run(show_plots):
     scSim = SimulationBaseClass.SimBaseClass()
 
     # set the simulation time variable used later on
-    simulationTime = macros.min2nano(10.)
+    simulationTime = macros.min2nano(4.)
 
     #
     #  create the simulation process
@@ -146,14 +151,47 @@ def run(show_plots):
     scObject = spacecraft.Spacecraft()
     scObject.ModelTag = "bsk-Sat"
     # define the simulation inertia
-    I = [900., 0., 0.,
-         0., 800., 0.,
-         0., 0., 600.]
-    scObject.hub.mHub = 750.0  # kg - spacecraft mass
+    I = [30., 10., 5.,
+         10., 20., 3.,
+         5., 3., 15.]
+    scObject.hub.mHub = 10.0  # kg - spacecraft mass
+    
+    # scObject.hub.mHub = 750.0  # kg - spacecraft mass
     scObject.hub.r_BcB_B = [[0.0], [0.0], [0.0]]  # m - position vector of body-fixed point B relative to CM
     scObject.hub.IHubPntBc_B = unitTestSupport.np2EigenMatrix3d(I)
-    scObject.hub.sigma_BNInit = [[0.1], [0.2], [-0.3]]  # sigma_BN_B
-    scObject.hub.omega_BN_BInit = [[0.001], [-0.01], [0.03]]  # rad/s - omega_BN_B
+    scObject.hub.sigma_BNInit = rbk.PRV2MRP([macros.D2R*45.0, 0.0, macros.D2R*20.0]) # rbk.C2MRP(np.identity(3))  # sigma_BN_B
+    scObject.hub.omega_BN_BInit = [0.0, macros.D2R*15.0, macros.D2R*15.0]  # rad/s - omega_BN_B
+
+    # clear prior gravitational body and SPICE setup definitions
+    gravFactory = simIncludeGravBody.gravBodyFactory()
+    # setup Earth Gravity Body
+    earth = gravFactory.createEarth()
+    earth.isCentralBody = True  # ensure this is the central gravitational body
+    mu = earth.mu
+    # attach gravity model to spacecraft
+    gravFactory.addBodiesTo(scObject)
+
+
+    #
+    #   setup orbit and simulation time
+    #
+    # setup the orbit using classical orbit elements
+    oe = orbitalMotion.ClassicElements()
+    rLEO = 7000. * 1000  # meters
+    rGEO = math.pow(earth.mu / math.pow((2. * np.pi) / (24. * 3600.), 2), 1. / 3.)
+    oe.a = rLEO
+    oe.e = 0.0001
+    oe.i = 0.0 * macros.D2R
+    oe.Omega = -90 * macros.D2R
+    oe.omega = 0.0 * macros.D2R
+    oe.f = 0.0 * macros.D2R
+    rN, vN = orbitalMotion.elem2rv(mu, oe)
+    scObject.hub.r_CN_NInit = rN  # m - r_CN_N
+    scObject.hub.v_CN_NInit = vN  # m - v_CN_N
+
+    # set the simulation time
+    n = np.sqrt(earth.mu / oe.a / oe.a / oe.a)
+    P = 2. * np.pi / n
 
     # add spacecraft object to the simulation process
     scSim.AddModelToTask(simTaskName, scObject)
@@ -179,7 +217,7 @@ def run(show_plots):
     inertial3DObj = inertial3D.inertial3D()
     inertial3DObj.ModelTag = "inertial3D"
     scSim.AddModelToTask(simTaskName, inertial3DObj)
-    inertial3DObj.sigma_R0N = [0., 0., 0.]  # set the desired inertial orientation
+    inertial3DObj.sigma_R0N = rbk.PRV2MRP([0.0 , 0.0 , 0.0])  # set the desired inertial orientation
 
     # setup the attitude tracking error evaluation module
     attError = attTrackingError.attTrackingError()
@@ -196,7 +234,7 @@ def run(show_plots):
     #
     #   Setup data logging before the simulation is initialized
     #
-    numDataPoints = 50
+    numDataPoints = 100
     samplingTime = unitTestSupport.samplingTime(simulationTime, simulationTimeStep, numDataPoints)
     attErrorLog = attError.attGuidOutMsg.recorder(samplingTime)
     mrpLog = pyMRPPD.cmdTorqueOutMsg.recorder(samplingTime)
@@ -235,6 +273,16 @@ def run(show_plots):
     dataSigmaBR = attErrorLog.sigma_BR
     dataOmegaBR = attErrorLog.omega_BR_B
     timeAxis = attErrorLog.times()
+
+    ## save off data    
+    np.savez('OptCtrlPrj/mrp.npz',
+              dataLr=dataLr,
+                dataSigmaBR=dataSigmaBR,
+                  dataOmegaBR=dataOmegaBR,
+                    time_min=timeAxis*macros.NANO2MIN)
+
+
+
     np.set_printoptions(precision=16)
 
     #
@@ -249,6 +297,7 @@ def run(show_plots):
     plt.legend(loc='lower right')
     plt.xlabel('Time [min]')
     plt.ylabel(r'Attitude Error $\sigma_{B/R}$')
+    plt.grid(True,'both','both')
     figureList = {}
     pltName = fileName + "1"
     figureList[pltName] = plt.figure(1)
@@ -261,6 +310,7 @@ def run(show_plots):
     plt.legend(loc='lower right')
     plt.xlabel('Time [min]')
     plt.ylabel('Control Torque $L_r$ [Nm]')
+    plt.grid(True,'both','both')
     pltName = fileName + "2"
     figureList[pltName] = plt.figure(2)
 
@@ -269,6 +319,7 @@ def run(show_plots):
         plt.plot(timeAxis * macros.NANO2MIN, dataOmegaBR[:, idx],
                  color=unitTestSupport.getLineColor(idx, 3),
                  label=r'$\omega_{BR,' + str(idx) + '}$')
+    plt.grid(True,'both','both')
     plt.legend(loc='lower right')
     plt.xlabel('Time [min]')
     plt.ylabel('Rate Tracking Error [rad/s] ')
@@ -368,5 +419,5 @@ class PythonMRPPD(sysModel.SysModel):
 #
 if __name__ == "__main__":
     run(
-        True  # show_plots
+        False  # show_plots
     )

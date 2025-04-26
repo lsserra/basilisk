@@ -74,15 +74,15 @@ K1_pol = K_pol[:,:3]
 K2_pol = K_pol[:,3:]
 
 # Output the solution
-print("K1:")
+print("K1 pole place:")
 print(K1_pol)
-print("K2:")
+print("K2 pole place:")
 print(K2_pol)
 # write gains and cost matrices to controller 
 
 # Prepare the updated gain and cost matrices as strings
-K1_str = f"self.K1 = np.array({K1.tolist()})"
-K2_str = f"self.K2 = np.array({K2.tolist()})"
+K1_str = f"self.K1 = np.array({K1_pol.tolist()})"
+K2_str = f"self.K2 = np.array({K2_pol.tolist()})"
 #K1_str = f"self.K1 = np.array({K1.tolist()})"
 #K2_str = f"self.K2 = np.array({K2.tolist()})"
 Q_str = f"self.Q = np.diag({Q.diagonal().tolist()})"
