@@ -159,8 +159,8 @@ def run(show_plots):
     # scObject.hub.mHub = 750.0  # kg - spacecraft mass
     scObject.hub.r_BcB_B = [[0.0], [0.0], [0.0]]  # m - position vector of body-fixed point B relative to CM
     scObject.hub.IHubPntBc_B = unitTestSupport.np2EigenMatrix3d(I)
-    scObject.hub.sigma_BNInit = rbk.PRV2MRP([macros.D2R*45.0, 0.0, macros.D2R*20.0]) # rbk.C2MRP(np.identity(3))  # sigma_BN_B
-    scObject.hub.omega_BN_BInit = [0.0, macros.D2R*15.0, macros.D2R*15.0]  # rad/s - omega_BN_B
+    scObject.hub.sigma_BNInit = rbk.PRV2MRP([macros.D2R*45.0, 0.0, macros.D2R*0.0]) # rbk.C2MRP(np.identity(3))  # sigma_BN_B
+    scObject.hub.omega_BN_BInit = [macros.D2R*15.0, macros.D2R*0.0, macros.D2R*0.0]  # rad/s - omega_BN_B
 
     # clear prior gravitational body and SPICE setup definitions
     gravFactory = simIncludeGravBody.gravBodyFactory()
@@ -288,7 +288,7 @@ def run(show_plots):
     #
     #   plot the results
     #
-    plt.close("all")  # clears out plots from earlier test runs
+  #  plt.close("all")  # clears out plots from earlier test runs
     plt.figure(1)
     for idx in range(3):
         plt.plot(timeAxis * macros.NANO2MIN, dataSigmaBR[:, idx],
@@ -328,7 +328,7 @@ def run(show_plots):
         plt.show()
 
     # close the plots being saved off to avoid over-writing old and new figures
-    plt.close("all")
+   # plt.close("all")
 
     return figureList
 

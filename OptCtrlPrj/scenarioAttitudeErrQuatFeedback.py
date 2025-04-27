@@ -159,8 +159,8 @@ def run(show_plots):
     attDesPropObj.ddtOmega_ItoB_B_des = np.zeros((3,1))
 
     ### SPACECRAFT
-    scObject.hub.sigma_BNInit =  rbk.PRV2MRP([macros.D2R*45.0, 0.0, macros.D2R*20.0]) # rbk.C2MRP(np.identity(3))  # sigma_BN_B
-    scObject.hub.omega_BN_BInit = [0.0, macros.D2R*15.0, macros.D2R*15.0]  # rad/s - omega_BN_B
+    scObject.hub.sigma_BNInit = rbk.PRV2MRP([macros.D2R*45.0, 0.0, macros.D2R*0.0]) # rbk.C2MRP(np.identity(3))  # sigma_BN_B
+    scObject.hub.omega_BN_BInit = [macros.D2R*15.0, macros.D2R*0.0, macros.D2R*0.0]  # rad/s - omega_BN_B
     
     
     # ADD TO SIM
@@ -738,4 +738,4 @@ def computeEulerVecAttErrorFromQuats(q_ref,q_est):
 
 if __name__ == "__main__":
 
-    run(show_plots=True,)
+    run(show_plots=False,)

@@ -17,36 +17,36 @@ from Basilisk.utilities import unitTestSupport  # general support file with comm
 
 
 
-def plotAttErr(timeMin,bodyEulerError,CtrlString):
+def plot3DAttErr(timeMin,bodyEulerError,CtrlString):
     plt.figure()
     axis = ['X','Y','Z']
     for idx in range(3):
         plt.plot(timeMin, bodyEulerError[:, idx],
                 color=unitTestSupport.getLineColor(idx, 3),
                 label=r'$\delta\theta_' + axis[idx].lower() + '$')
-        plt.legend(loc='lower right')
+        plt.legend(loc='best')
         plt.xlabel('Time [min]')
         plt.ylabel(r'Attitude Error Body Frame [deg]')
         plt.grid(True,'both','both')
-        title = CtrlString + 'Body Frame Attitude Error'
+        title = CtrlString + ' Body Frame Attitude Error'
         plt.title(title)
         pltName = title + "1"
 
 
-def plotRateErr(timeMin,rateError,CtrlString):
+def plot3DRateErr(timeMin,rateError,CtrlString):
     plt.figure()
     axis = ['X','Y','Z']
     for idx in range(3):
         plt.plot(timeMin, rateError[:, idx],
                  color=unitTestSupport.getLineColor(idx, 3),
                  label=r'$\delta\omega_' + axis[idx].lower() + '$')
-        plt.legend(loc='lower right')
+        plt.legend(loc='best')
         plt.xlabel('Time [min]')
         plt.ylabel(r'Ang Rate Tracking Error [deg/s]')
         plt.grid(True,'both','both')
-        title = CtrlString + 'Ang Rate Tracking Error'
+        title = CtrlString + ' Ang Rate Tracking Error'
         plt.title(title)
-        pltName = title + "1"
+        pltName = title + "1" 
 
 def plotCostQuatVsMrp(TimeMin,quatCost,MrpCost):
     plt.figure()
@@ -54,11 +54,60 @@ def plotCostQuatVsMrp(TimeMin,quatCost,MrpCost):
                  label='Error Quaternion Ctrl Cost')
     plt.plot(TimeMin, MrpCost,
                  label='MRP Ctrl Cost')
-    plt.legend(loc='lower right')
+    plt.legend(loc='best')
     plt.xlabel('Time [min]')
     plt.ylabel(r'Cost')
     plt.grid(True,'both','both')
     title = 'Cost Comparision'
+    plt.title(title)
+
+def plotCompareMagErr(TimeMin, quatAttErr, quatRateErr, mrpAttErr, mrpRateErr):
+    
+    qMagAttErr = np.linalg.norm(quatAttErr, axis=1)
+    qMagRateErr = np.linalg.norm(quatRateErr, axis=1)
+    mrpMagAttErr = np.linalg.norm(mrpAttErr, axis=1)
+    mrpMagRateErr = np.linalg.norm(mrpRateErr, axis=1)
+    # att error plot
+    plt.figure()
+    plt.plot(TimeMin, qMagAttErr,
+                 label='Error Quaternion Ctrlr')
+    plt.plot(TimeMin, mrpMagAttErr,
+                 label='MRP Ctrlr')
+    plt.legend(loc='best')
+    plt.xlabel('Time [min]')
+    plt.ylabel('Body Attitude Error [deg]')
+    plt.grid(True,'both','both')
+    title = 'Mag. Att. Error Comparision'
+    plt.title(title)
+
+    # rate error plot
+    plt.figure()
+    plt.plot(TimeMin, qMagRateErr,
+                 label='Error Quaternion Ctrlr')
+    plt.plot(TimeMin, mrpMagRateErr,
+                 label='MRP Ctrlr')
+    plt.legend(loc='best')
+    plt.xlabel('Time [min]')
+    plt.ylabel('Body Ang. Rate Error [deg/s]')
+    plt.grid(True,'both','both')
+    title = 'Mag. Rate Error Comparision'
+    plt.title(title)
+
+def plotMagTrqQuatVsMrp(TimeMin,quatLr,MrpLr):
+
+    sumLrQ = np.sum(quatLr)
+    sumLrMrp = np.sum(MrpLr)
+
+    plt.figure()
+    plt.plot(TimeMin, quatLr,
+                 label=f'Error Quaternion Torque Cmd | Total Torque = {sumLrQ:.2f} Nm')
+    plt.plot(TimeMin, MrpLr,
+                 label=f'MRP Torque Cmd | Total Torque = {sumLrMrp:.2f} Nm')
+    plt.legend(loc='best')
+    plt.xlabel('Time [min]')
+    plt.ylabel('Control Torque $L_r$ [Nm]')
+    plt.grid(True,'both','both')
+    title = 'Control Torque Comparision'
     plt.title(title)
 
 
@@ -80,7 +129,7 @@ if __name__ == "__main__":
 
     # compute euler err vec, R2D
     for i in range(mrp_omega_BR.shape[0]):
-        mrp_eulerErr[i,:] = rbk.R2D* rbk.MRP2PRV(mrp_omega_BR[i,:])
+        mrp_eulerErr[i,:] = rbk.R2D* rbk.MRP2PRV(mrp_sigma_BR[i,:])
         mrp_omega_BR[i,:] = rbk.R2D*mrp_omega_BR[i,:]
 
     # process quatData
@@ -111,13 +160,23 @@ if __name__ == "__main__":
             )
 
     plt.close("all")
-    plotCostQuatVsMrp(costTime,q_cost,mrp_cost)
+    # plotCostQuatVsMrp(costTime,q_cost,mrp_cost)
 
-    plotAttErr(q_time_min,q_eulerErrDeg,'Error Quaternion Controller')
-    plotRateErr(q_time_min,q_w_bi_b_Deg,'Error Quaternion Controller')
+    plot3DAttErr(q_time_min,q_eulerErrDeg,'Error Quaternion Controller')
+    plot3DRateErr(q_time_min,q_w_bi_b_Deg,'Error Quaternion Controller')
 
-    plotAttErr(mrp_time_min,mrp_eulerErr,'MRP Feedback Controller')
-    plotRateErr(mrp_time_min,mrp_omega_BR,'MRP Feedback Controller') 
+    plot3DAttErr(mrp_time_min,mrp_eulerErr,'MRP Feedback Controller')
+    plot3DRateErr(mrp_time_min,-mrp_omega_BR,'MRP Feedback Controller') # negate to align with quat ang rate err def.
+
+    plotCompareMagErr(q_time_min, q_eulerErrDeg, q_w_bi_b_Deg,
+                      mrp_eulerErr, mrp_omega_BR)
+
+
+
+
+    qLrNorm =  np.linalg.norm(q_dataLr, axis=1)
+    mrpLrNorm =  np.linalg.norm(mrp_dataLr, axis=1)
+    plotMagTrqQuatVsMrp(q_timeLr_min, qLrNorm, mrpLrNorm)
 
     plt.show()
     plt.close("all")       
