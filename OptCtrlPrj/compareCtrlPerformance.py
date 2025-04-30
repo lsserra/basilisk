@@ -26,7 +26,7 @@ def plot3DAttErr(timeMin,bodyEulerError,CtrlString):
                 label=r'$\delta\theta_' + axis[idx].lower() + '$')
         plt.legend(loc='best')
         plt.xlabel('Time [min]')
-        plt.ylabel(r'Attitude Error Body Frame [deg]')
+        plt.ylabel(r'Body Attitude Error [deg]')
         plt.grid(True,'both','both')
         title = CtrlString + ' Body Frame Attitude Error'
         plt.title(title)
@@ -42,7 +42,7 @@ def plot3DRateErr(timeMin,rateError,CtrlString):
                  label=r'$\delta\omega_' + axis[idx].lower() + '$')
         plt.legend(loc='best')
         plt.xlabel('Time [min]')
-        plt.ylabel(r'Ang Rate Tracking Error [deg/s]')
+        plt.ylabel(r'Angular Rate Tracking Error [deg/s]')
         plt.grid(True,'both','both')
         title = CtrlString + ' Ang Rate Tracking Error'
         plt.title(title)

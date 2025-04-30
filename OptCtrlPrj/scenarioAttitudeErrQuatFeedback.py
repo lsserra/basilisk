@@ -120,7 +120,7 @@ def run(show_plots):
     oe.a = rLEO
     oe.e = 0.0001
     oe.i = 20.0 * macros.D2R
-    oe.Omega = -90 * macros.D2R
+    oe.Omega = -0. * macros.D2R
     oe.omega = 0.30 * macros.D2R
     oe.f = 0.0 * macros.D2R
     rN, vN = orbitalMotion.elem2rv(mu, oe)
@@ -155,7 +155,7 @@ def run(show_plots):
     #attDesPropObj.current_q_ItoB_des = np.array([2*np.sqrt(2), 2*np.sqrt(2), 0.0, 0.0]) #initial des att is 90 deg rot ab inertial x
     attDesPropObj.current_q_ItoB_des = rbk.PRV2EP([macros.D2R*0.0, macros.D2R*0.0, macros.D2R*0.0])
     attDesPropObj.last_q_ItoB_des = attDesPropObj.current_q_ItoB_des
-    attDesPropObj.omega_ItoB_B_des = np.array([macros.D2R*0.0, macros.D2R*0.0,macros.D2R*0.0]) # desired ang rate | LEO orbit, 90min/2pi -> 0.068deg/s .0011 rad/s
+    attDesPropObj.omega_ItoB_B_des = np.array([macros.D2R*10.0, macros.D2R*0.0,macros.D2R*0.0]) # desired ang rate | LEO orbit, 90min/2pi -> 0.068deg/s .0011 rad/s
     attDesPropObj.ddtOmega_ItoB_B_des = np.zeros((3,1))
 
     ### SPACECRAFT
@@ -383,12 +383,14 @@ def run(show_plots):
     pltName = title + "1"
     figureList[pltName] = plt.figure(7)
 
+
+    '''
     ## save off data
     np.savez('OptCtrlPrj/quat.npz',
               dataLr=dataLr,timeLr_min=timeAxis*macros.NANO2MIN,
               eulerErrDeg= macros.R2D * bodyEulerErrorVec_store,
               w_bi_b_Deg=w_err, time_min=attTime*macros.NANO2MIN)
-
+    '''
 
 
 
@@ -493,8 +495,6 @@ class quatBodyRateAccelPropagation(sysModel.SysModel):
         if new_q_ItoB_des[0] <1e-12:
             new_q_ItoB_des = -new_q_ItoB_des
 
-
-       
 
         # publish msg
         #C_ItoB = rbk.MRP2C(navSol.sigma_BN)
@@ -693,7 +693,7 @@ class errQuatFeedback(sysModel.SysModel):
         # All Python SysModels have self.bskLogger available
         # The logger level flags (i.e. BSK_INFORMATION) may be
         # accessed from sysModel
-        if True:
+        if False:
             """Sample Python module method"""
             self.bskLogger.bskLog(
             bskLogging.BSK_INFORMATION,
