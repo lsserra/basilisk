@@ -51,7 +51,7 @@ bskPath = __path__[0]
 fileName = os.path.basename(os.path.splitext(__file__)[0])
 
 
-def run(show_plots):
+def run(show_plots,gainMethod):
     """
     The scenarios can be run with the followings setups parameters:
 
@@ -119,9 +119,9 @@ def run(show_plots):
     rGEO = math.pow(earth.mu / math.pow((2. * np.pi) / (24. * 3600.), 2), 1. / 3.)
     oe.a = rLEO
     oe.e = 0.0001
-    oe.i = 20.0 * macros.D2R
+    oe.i = 0.0 * macros.D2R
     oe.Omega = -0. * macros.D2R
-    oe.omega = 0.30 * macros.D2R
+    oe.omega = 0.0 * macros.D2R
     oe.f = 0.0 * macros.D2R
     rN, vN = orbitalMotion.elem2rv(mu, oe)
     scObject.hub.r_CN_NInit = rN  # m - r_CN_N
@@ -147,24 +147,24 @@ def run(show_plots):
     #
 
     ## SIM TIME
-    # simulationTime = macros.sec2nano(0.25 * P)
-    simulationTime = macros.min2nano(.03)
+    #simulationTime = macros.sec2nano(0.25 * P)
+    simulationTime = macros.min2nano(5.03)
 
     ### CONTROLLER
     # assume q_ItoB(t=0) is identity 
     #attDesPropObj.current_q_ItoB_des = np.array([2*np.sqrt(2), 2*np.sqrt(2), 0.0, 0.0]) #initial des att is 90 deg rot ab inertial x
     attDesPropObj.current_q_ItoB_des = rbk.PRV2EP([macros.D2R*0.0, macros.D2R*0.0, macros.D2R*0.0])
     attDesPropObj.last_q_ItoB_des = attDesPropObj.current_q_ItoB_des
-    attDesPropObj.omega_ItoB_B_des = np.array([macros.D2R*10.0, macros.D2R*0.0,macros.D2R*0.0]) # desired ang rate | LEO orbit, 90min/2pi -> 0.068deg/s .0011 rad/s
+    attDesPropObj.omega_ItoB_B_des = np.array([macros.D2R*0.0, macros.D2R*0.0,macros.D2R*0.0]) # desired ang rate | LEO orbit, 90min/2pi -> 0.068deg/s .0011 rad/s
     attDesPropObj.ddtOmega_ItoB_B_des = np.zeros((3,1))
 
     ### SPACECRAFT
-    scObject.hub.sigma_BNInit = rbk.PRV2MRP([macros.D2R*179.8, 0.0, macros.D2R*0.0]) # rbk.C2MRP(np.identity(3))  # sigma_BN_B
-    scObject.hub.omega_BN_BInit = [macros.D2R*5.0, macros.D2R*0.0, macros.D2R*0.0]  # rad/s - omega_BN_B
+    scObject.hub.sigma_BNInit = rbk.PRV2MRP([macros.D2R*0.0, 0.0, macros.D2R*0.0]) # rbk.C2MRP(np.identity(3))  # sigma_BN_B
+    scObject.hub.omega_BN_BInit = [macros.D2R*0.0, macros.D2R*0.0, macros.D2R*0.0]  # rad/s - omega_BN_B
     
     
     # ADD TO SIM
-    scSim.AddModelToTask(simTaskName, attDesPropObj)
+    scSim.AddModelToTask(simTaskName, attDesPropObj,1)
     # add spacecraft object to the simulation process
     scSim.AddModelToTask(simTaskName, scObject)
 
@@ -384,13 +384,21 @@ def run(show_plots):
     figureList[pltName] = plt.figure(7)
 
 
-    '''
-    ## save off data
-    np.savez('OptCtrlPrj/quat.npz',
+    
+    ## save off data | switch gain method
+    if gainMethod == 'lqr':
+        uniqueName = 'lqr'
+    elif gainMethod == 'pp':
+        uniqueName = 'pp'
+    else:
+        raise ValueError(f"Unknown gain method: {gainMethod}")
+    
+    np.savez('OptCtrlPrj/'+uniqueName,
               dataLr=dataLr,timeLr_min=timeAxis*macros.NANO2MIN,
               eulerErrDeg= macros.R2D * bodyEulerErrorVec_store,
-              w_bi_b_Deg=w_err, time_min=attTime*macros.NANO2MIN)
-    '''
+              w_bi_b_Deg=w_err, time_min=attTime*macros.NANO2MIN,
+              Jk_store=Jk_store,costTime=costTime)
+    
 
 
 
@@ -433,8 +441,9 @@ class quatBodyRateAccelPropagation(sysModel.SysModel):
         navSol = self.navAttMsgIn()
 
         # compute dt
-        if self.priorTime < 1E-5:
+        if self.priorTime < 1E-12:
             dt = 0.0
+            self.priorTime = 10
             return
         else:
             dt = (CurrentSimNanos * macros.NANO2SEC) - self.priorTime
@@ -512,7 +521,7 @@ class quatBodyRateAccelPropagation(sysModel.SysModel):
 
 
         # loggging 
-        if False:
+        if True:
             self.bskLogger.bskLog(sysModel.BSK_INFORMATION, f"Guide_internal: Time: {CurrentSimNanos * 1.0E-9} s")
             self.bskLogger.bskLog(sysModel.BSK_INFORMATION, f"Guide_internal: Nav Sol Time Tag: {navSol.timeTag} s")
             self.bskLogger.bskLog(sysModel.BSK_INFORMATION, f"Guide_internal: Nav Sol Trans Time Tag: {navTransSol.timeTag} s")
@@ -693,7 +702,7 @@ class errQuatFeedback(sysModel.SysModel):
         # All Python SysModels have self.bskLogger available
         # The logger level flags (i.e. BSK_INFORMATION) may be
         # accessed from sysModel
-        if False:
+        if True:
             """Sample Python module method"""
             self.bskLogger.bskLog(
             bskLogging.BSK_INFORMATION,
@@ -783,5 +792,6 @@ def computeEulerVecAttErrorFromQuats(q_ref,q_est):
 
 
 if __name__ == "__main__":
-
-    run(show_plots=True)
+    lqrStrg = 'lqr'
+    ppStrg = 'pp'
+    run(show_plots=True,gainMethod=ppStrg)

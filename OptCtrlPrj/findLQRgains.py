@@ -52,7 +52,7 @@ import numpy as np
 from scipy.signal import place_poles
 
 # Natural frequency and damping ratio
-wn = 0.1  # rad/s
+wn = 0.2  # rad/s
 damp = 0.9
 
 # Compute poles (real because damping ratio > 1)

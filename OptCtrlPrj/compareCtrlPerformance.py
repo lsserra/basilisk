@@ -48,12 +48,14 @@ def plot3DRateErr(timeMin,rateError,CtrlString):
         plt.title(title)
         pltName = title + "1" 
 
-def plotCostQuatVsMrp(TimeMin,quatCost,MrpCost):
+def plotCostQuatVsOtherCtrl(TimeMin,quatCost,OtherCost,OtherCtrlString):
     plt.figure()
+    lqrCostSum = sum(quatCost)
+    otherCostSum = sum(OtherCost)
     plt.plot(TimeMin, quatCost,
-                 label='Error Quaternion Ctrl Cost')
-    plt.plot(TimeMin, MrpCost,
-                 label='MRP Ctrl Cost')
+                 label=f'LQR Gain Cost | Total Cost = {lqrCostSum:.6f}')
+    plt.plot(TimeMin, OtherCost,
+                 label=OtherCtrlString +f' Cost | Total Cost = {otherCostSum:.6f}')
     plt.legend(loc='best')
     plt.xlabel('Time [min]')
     plt.ylabel(r'Cost')
@@ -61,18 +63,18 @@ def plotCostQuatVsMrp(TimeMin,quatCost,MrpCost):
     title = 'Cost Comparision'
     plt.title(title)
 
-def plotCompareMagErr(TimeMin, quatAttErr, quatRateErr, mrpAttErr, mrpRateErr):
+def plotCompareMagErr(TimeMin, quatAttErr, quatRateErr, OtherCostAttErr, OtherRateErr,OtherCtrlString):
     
     qMagAttErr = np.linalg.norm(quatAttErr, axis=1)
     qMagRateErr = np.linalg.norm(quatRateErr, axis=1)
-    mrpMagAttErr = np.linalg.norm(mrpAttErr, axis=1)
-    mrpMagRateErr = np.linalg.norm(mrpRateErr, axis=1)
+    otherMagAttErr = np.linalg.norm(OtherCostAttErr, axis=1)
+    otherMagRateErr = np.linalg.norm(OtherRateErr, axis=1)
     # att error plot
     plt.figure()
     plt.plot(TimeMin, qMagAttErr,
                  label='Error Quaternion Ctrlr')
-    plt.plot(TimeMin, mrpMagAttErr,
-                 label='MRP Ctrlr')
+    plt.plot(TimeMin, otherMagAttErr,
+                 label=OtherCtrlString +' Ctrlr')
     plt.legend(loc='best')
     plt.xlabel('Time [min]')
     plt.ylabel('Body Attitude Error [deg]')
@@ -84,8 +86,8 @@ def plotCompareMagErr(TimeMin, quatAttErr, quatRateErr, mrpAttErr, mrpRateErr):
     plt.figure()
     plt.plot(TimeMin, qMagRateErr,
                  label='Error Quaternion Ctrlr')
-    plt.plot(TimeMin, mrpMagRateErr,
-                 label='MRP Ctrlr')
+    plt.plot(TimeMin, otherMagRateErr,
+                 label=OtherCtrlString +' Ctrlr')
     plt.legend(loc='best')
     plt.xlabel('Time [min]')
     plt.ylabel('Body Ang. Rate Error [deg/s]')
@@ -93,22 +95,26 @@ def plotCompareMagErr(TimeMin, quatAttErr, quatRateErr, mrpAttErr, mrpRateErr):
     title = 'Mag. Rate Error Comparision'
     plt.title(title)
 
-def plotMagTrqQuatVsMrp(TimeMin,quatLr,MrpLr):
+def plotMagTrqQuatVsOtherCtrl(TimeMin,quatLr,OtherLr,OtherCtrlString):
 
     sumLrQ = np.sum(quatLr)
-    sumLrMrp = np.sum(MrpLr)
+    sumLrMrp = np.sum(OtherLr)
 
     plt.figure()
     plt.plot(TimeMin, quatLr,
                  label=f'Error Quaternion Torque Cmd | Total Torque = {sumLrQ:.2f} Nm')
-    plt.plot(TimeMin, MrpLr,
-                 label=f'MRP Torque Cmd | Total Torque = {sumLrMrp:.2f} Nm')
+    plt.plot(TimeMin, OtherLr,
+                 label= OtherCtrlString + f' Torque Cmd | Total Torque = {sumLrMrp:.2f} Nm')
     plt.legend(loc='best')
     plt.xlabel('Time [min]')
     plt.ylabel('Control Torque $L_r$ [Nm]')
     plt.grid(True,'both','both')
     title = 'Control Torque Comparision'
     plt.title(title)
+
+
+
+
 
 
 
@@ -159,6 +165,10 @@ if __name__ == "__main__":
             .5*( (mrp_euler.T@mrp_euler) + (mrp_rate.T@mrp_rate) + (mrp_Lr.T@mrp_Lr))
             )
 
+    '''
+    ########
+    ## Plots for Err Quat vs MRP
+    ####### 
     plt.close("all")
     # plotCostQuatVsMrp(costTime,q_cost,mrp_cost)
 
@@ -171,12 +181,47 @@ if __name__ == "__main__":
     plotCompareMagErr(q_time_min, q_eulerErrDeg, q_w_bi_b_Deg,
                       mrp_eulerErr, mrp_omega_BR)
 
-
-
-
     qLrNorm =  np.linalg.norm(q_dataLr, axis=1)
     mrpLrNorm =  np.linalg.norm(mrp_dataLr, axis=1)
     plotMagTrqQuatVsMrp(q_timeLr_min, qLrNorm, mrpLrNorm)
+    '''
+
+
+    ########
+    ## Plots for Pole Placement vs LQR
+    ####### 
+
+    lqrData = np.load('OptCtrlPRj/lqr.npz')
+    ppData = np.load('OptCtrlPRj/pp.npz')
+
+    # process data lqr
+    lqr_q_eulerErrDeg = lqrData['eulerErrDeg']
+    lqr_q_w_bi_b_Deg = lqrData['w_bi_b_Deg']
+    lqr_q_time_min = lqrData['time_min']
+    lqr_q_dataLr = lqrData['dataLr']
+    lqr_q_timeLr_min = lqrData['timeLr_min']
+    lqr_q_cost = lqrData['Jk_store']
+    lqr_q_costTime= lqrData['costTime']
+
+    # process data pp
+    pp_q_eulerErrDeg = ppData['eulerErrDeg']
+    pp_q_w_bi_b_Deg = ppData['w_bi_b_Deg']
+    pp_q_time_min = ppData['time_min']
+    pp_q_dataLr = ppData['dataLr']
+    pp_q_timeLr_min = ppData['timeLr_min']
+    pp_q_cost = ppData['Jk_store']
+    pp_q_costTime= ppData['costTime']
+
+
+    # lqr indv plots    
+    plot3DAttErr(lqr_q_time_min,lqr_q_eulerErrDeg,'LQR Gain')
+    plot3DRateErr(lqr_q_time_min,lqr_q_w_bi_b_Deg,'LQR Gain')
+
+    plot3DAttErr(pp_q_time_min,pp_q_eulerErrDeg,'Pole Placement Gain')
+    plot3DRateErr(pp_q_time_min,pp_q_w_bi_b_Deg,'LQR Gain')
+
+    
+    plotCostQuatVsOtherCtrl(lqr_q_costTime,lqr_q_cost,pp_q_cost,'Pole Placement Gain')
 
     plt.show()
     plt.close("all")       
