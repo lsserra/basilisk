@@ -120,7 +120,7 @@ def run(show_plots,gainMethod):
     oe.a = rLEO
     oe.e = 0.0001
     oe.i = 0.0 * macros.D2R
-    oe.Omega = -0. * macros.D2R
+    oe.Omega = -90.0 * macros.D2R
     oe.omega = 0.0 * macros.D2R
     oe.f = 0.0 * macros.D2R
     rN, vN = orbitalMotion.elem2rv(mu, oe)
@@ -147,20 +147,20 @@ def run(show_plots,gainMethod):
     #
 
     ## SIM TIME
-    #simulationTime = macros.sec2nano(0.25 * P)
+   # simulationTime = macros.sec2nano(0.25 * P)
     simulationTime = macros.min2nano(5.03)
 
     ### CONTROLLER
     # assume q_ItoB(t=0) is identity 
-    #attDesPropObj.current_q_ItoB_des = np.array([2*np.sqrt(2), 2*np.sqrt(2), 0.0, 0.0]) #initial des att is 90 deg rot ab inertial x
-    attDesPropObj.current_q_ItoB_des = rbk.PRV2EP([macros.D2R*0.0, macros.D2R*0.0, macros.D2R*0.0])
+    attDesPropObj.current_q_ItoB_des = np.array([2*np.sqrt(2), 2*np.sqrt(2), 0.0, 0.0]) #initial des att is 90 deg rot ab inertial x
+    # attDesPropObj.current_q_ItoB_des = rbk.PRV2EP([macros.D2R*0.0, macros.D2R*0.0, macros.D2R*0.0])
     attDesPropObj.last_q_ItoB_des = attDesPropObj.current_q_ItoB_des
-    attDesPropObj.omega_ItoB_B_des = np.array([macros.D2R*0.0, macros.D2R*0.0,macros.D2R*0.0]) # desired ang rate | LEO orbit, 90min/2pi -> 0.068deg/s .0011 rad/s
+    attDesPropObj.omega_ItoB_B_des = np.array([macros.D2R*0.0, macros.D2R*0.068,macros.D2R*0.0]) # desired ang rate | LEO orbit, 90min/2pi -> 0.068deg/s .0011 rad/s
     attDesPropObj.ddtOmega_ItoB_B_des = np.zeros((3,1))
 
     ### SPACECRAFT
     scObject.hub.sigma_BNInit = rbk.PRV2MRP([macros.D2R*0.0, 0.0, macros.D2R*0.0]) # rbk.C2MRP(np.identity(3))  # sigma_BN_B
-    scObject.hub.omega_BN_BInit = [macros.D2R*0.0, macros.D2R*0.0, macros.D2R*0.0]  # rad/s - omega_BN_B
+    scObject.hub.omega_BN_BInit = [macros.D2R*0.0, macros.D2R*5.0, macros.D2R*0.0]  # rad/s - omega_BN_B
     
     
     # ADD TO SIM
@@ -443,13 +443,11 @@ class quatBodyRateAccelPropagation(sysModel.SysModel):
         # compute dt
         if self.priorTime < 1E-12:
             dt = 0.0
-            self.priorTime = 10
-            return
         else:
             dt = (CurrentSimNanos * macros.NANO2SEC) - self.priorTime
 
 
-        '''
+        
         ##################################################################
         # quaternion attitude propagation of an initial desired quaternion
         ##################################################################
@@ -476,6 +474,8 @@ class quatBodyRateAccelPropagation(sysModel.SysModel):
             new_q_ItoB_des = -new_q_ItoB_des
         new_q_ItoB_des = new_q_ItoB_des / np.linalg.norm(new_q_ItoB_des)
         self.current_q_ItoB_des = new_q_ItoB_des
+        
+
         '''
 
         ##################################################################
@@ -503,6 +503,7 @@ class quatBodyRateAccelPropagation(sysModel.SysModel):
         new_q_ItoB_des = rbk.PRV2EP(prv_eci2body)
         if new_q_ItoB_des[0] <1e-12:
             new_q_ItoB_des = -new_q_ItoB_des
+        '''
 
 
         # publish msg
@@ -521,24 +522,27 @@ class quatBodyRateAccelPropagation(sysModel.SysModel):
 
 
         # loggging 
-        if True:
+        if False:
             self.bskLogger.bskLog(sysModel.BSK_INFORMATION, f"Guide_internal: Time: {CurrentSimNanos * 1.0E-9} s")
             self.bskLogger.bskLog(sysModel.BSK_INFORMATION, f"Guide_internal: Nav Sol Time Tag: {navSol.timeTag} s")
+
+            '''
             self.bskLogger.bskLog(sysModel.BSK_INFORMATION, f"Guide_internal: Nav Sol Trans Time Tag: {navTransSol.timeTag} s")
 
             self.bskLogger.bskLog(sysModel.BSK_INFORMATION, f"Guide_internal: pos: {r_eciToBody_eci}")
             self.bskLogger.bskLog(sysModel.BSK_INFORMATION, f"Guide_internal: angleBetween: {rbk.R2D*angle}")
             self.bskLogger.bskLog(sysModel.BSK_INFORMATION, f"Guide_internal: q_Nav_ItoB: {rbk.MRP2EP(navSol.sigma_BN)}")
+            '''
 
             self.bskLogger.bskLog(sysModel.BSK_INFORMATION, f"Guide_internal: MRP_Des_ItoB: {rbk.EP2MRP(new_q_ItoB_des)}")
             self.bskLogger.bskLog(sysModel.BSK_INFORMATION, f"Guide_internal: q_Des_ItoB: {new_q_ItoB_des}")
             
-            '''
+            
             self.bskLogger.bskLog(sysModel.BSK_INFORMATION, f"Guide_internal: Des_sigma_BR: {attRefMsg.sigma_RN}")
             self.bskLogger.bskLog(sysModel.BSK_INFORMATION, f"Guide_internal: Des_omega_BR_B: {attRefMsg.omega_RN_N}")
             self.bskLogger.bskLog(sysModel.BSK_INFORMATION, f"Guide_internal: q_outIntegrator: {q_outIntegrator}")
             self.bskLogger.bskLog(sysModel.BSK_INFORMATION, f"Guide_internal: dt: {dt}")
-            '''
+            
         return
 
 
@@ -557,8 +561,8 @@ class errQuatFeedback(sysModel.SysModel):
         super(errQuatFeedback, self).__init__()
         
         # LQR determined gains
-        self.K1 = np.array([[0.010000000000000009, 0.0, 0.0], [0.0, 0.010000000000000009, 0.0], [0.0, 0.0, 0.010000000000000009]])
-        self.K2 = np.array([[0.1417744687875785, 0.0, 0.0], [0.0, 0.1417744687875785, 0.0], [0.0, 0.0, 0.1417744687875785]])
+        self.K1 = np.array([[0.040000000000000056, -2.9860707892357773e-18, -7.011235733052289e-18], [1.3416239263270546e-17, 0.04000000000000004, 6.476682410223697e-18], [1.6225094939145334e-17, 1.4463853805174492e-17, 0.04000000000000004]])
+        self.K2 = np.array([[0.3600000000000002, 1.4848967280487058e-17, -2.8433920621620727e-17], [7.115810861634531e-17, 0.3600000000000001, 5.129827293943765e-17], [1.0870198489244562e-17, 3.774069879352223e-17, 0.36000000000000015]])
 
         # LQR state cost weight (Q) and control cost weight (R) for cost calc
         self.Q = np.diag([0.0001, 0.0001, 0.0001, 0.0001, 0.0001, 0.0001])
@@ -702,7 +706,7 @@ class errQuatFeedback(sysModel.SysModel):
         # All Python SysModels have self.bskLogger available
         # The logger level flags (i.e. BSK_INFORMATION) may be
         # accessed from sysModel
-        if True:
+        if False:
             """Sample Python module method"""
             self.bskLogger.bskLog(
             bskLogging.BSK_INFORMATION,
