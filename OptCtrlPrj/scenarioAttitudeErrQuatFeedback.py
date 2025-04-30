@@ -119,9 +119,9 @@ def run(show_plots):
     rGEO = math.pow(earth.mu / math.pow((2. * np.pi) / (24. * 3600.), 2), 1. / 3.)
     oe.a = rLEO
     oe.e = 0.0001
-    oe.i = 0.0 * macros.D2R
+    oe.i = 20.0 * macros.D2R
     oe.Omega = -90 * macros.D2R
-    oe.omega = 0.0 * macros.D2R
+    oe.omega = 0.30 * macros.D2R
     oe.f = 0.0 * macros.D2R
     rN, vN = orbitalMotion.elem2rv(mu, oe)
     scObject.hub.r_CN_NInit = rN  # m - r_CN_N
@@ -148,7 +148,7 @@ def run(show_plots):
 
     ## SIM TIME
     # simulationTime = macros.sec2nano(0.25 * P)
-    simulationTime = macros.min2nano(4.)
+    simulationTime = macros.min2nano(.03)
 
     ### CONTROLLER
     # assume q_ItoB(t=0) is identity 
@@ -159,8 +159,8 @@ def run(show_plots):
     attDesPropObj.ddtOmega_ItoB_B_des = np.zeros((3,1))
 
     ### SPACECRAFT
-    scObject.hub.sigma_BNInit = rbk.PRV2MRP([macros.D2R*45.0, 0.0, macros.D2R*0.0]) # rbk.C2MRP(np.identity(3))  # sigma_BN_B
-    scObject.hub.omega_BN_BInit = [macros.D2R*15.0, macros.D2R*0.0, macros.D2R*0.0]  # rad/s - omega_BN_B
+    scObject.hub.sigma_BNInit = rbk.PRV2MRP([macros.D2R*179.8, 0.0, macros.D2R*0.0]) # rbk.C2MRP(np.identity(3))  # sigma_BN_B
+    scObject.hub.omega_BN_BInit = [macros.D2R*5.0, macros.D2R*0.0, macros.D2R*0.0]  # rad/s - omega_BN_B
     
     
     # ADD TO SIM
@@ -176,13 +176,13 @@ def run(show_plots):
     extFTObject = extForceTorque.ExtForceTorque()
     extFTObject.ModelTag = "externalDisturbance"
     scObject.addDynamicEffector(extFTObject)
-    scSim.AddModelToTask(simTaskName, extFTObject)
+    scSim.AddModelToTask(simTaskName, extFTObject,1)
 
     # add the simple Navigation sensor module.  This sets the SC attitude, rate, position
     # velocity navigation message
     sNavObject = simpleNav.SimpleNav()
     sNavObject.ModelTag = "SimpleNavigation"
-    scSim.AddModelToTask(simTaskName, sNavObject)
+    scSim.AddModelToTask(simTaskName, sNavObject,1)
 
     #
     #   setup the FSW algorithm tasks
@@ -192,7 +192,7 @@ def run(show_plots):
     # setup the attitude tracking error evaluation module
     attError = attTrackingError.attTrackingError()
     attError.ModelTag = "attErrorInertial3D"
-    scSim.AddModelToTask(simTaskName, attError)
+    #scSim.AddModelToTask(simTaskName, attError)
     
     # setup Error Quaternion closed loop control module
     pyErrQuatCtrlr = errQuatFeedback()
@@ -230,6 +230,7 @@ def run(show_plots):
     #
     sNavObject.scStateInMsg.subscribeTo(scObject.scStateOutMsg)
     attDesPropObj.navAttMsgIn.subscribeTo(sNavObject.attOutMsg)
+    attDesPropObj.navTransMsgIn.subscribeTo(sNavObject.transOutMsg)
     attError.attNavInMsg.subscribeTo(sNavObject.attOutMsg)
     attError.attRefInMsg.subscribeTo(attDesPropObj.currentDesAttMsgOut)
     pyErrQuatCtrlr.navAttMsgIn.subscribeTo(sNavObject.attOutMsg)
@@ -409,6 +410,7 @@ class quatBodyRateAccelPropagation(sysModel.SysModel):
         super(quatBodyRateAccelPropagation, self).__init__()
         # parameters
         self.navAttMsgIn = messaging.NavAttMsgReader()
+        self.navTransMsgIn = messaging.NavTransMsgReader()
         self.currentDesAttMsgOut = messaging.AttRefMsg()
         self.priorTime = 0.0
         
@@ -431,8 +433,15 @@ class quatBodyRateAccelPropagation(sysModel.SysModel):
         # compute dt
         if self.priorTime < 1E-5:
             dt = 0.0
+            return
         else:
             dt = (CurrentSimNanos * macros.NANO2SEC) - self.priorTime
+
+
+        '''
+        ##################################################################
+        # quaternion attitude propagation of an initial desired quaternion
+        ##################################################################
 
         # get last desired attiude
         last_q_ItoB = self.last_q_ItoB_des
@@ -456,6 +465,34 @@ class quatBodyRateAccelPropagation(sysModel.SysModel):
             new_q_ItoB_des = -new_q_ItoB_des
         new_q_ItoB_des = new_q_ItoB_des / np.linalg.norm(new_q_ItoB_des)
         self.current_q_ItoB_des = new_q_ItoB_des
+        '''
+
+        ##################################################################
+        # guidance to project body z in line with position vector
+        # point body z at center of the earth regardless of orbit
+        ##################################################################
+
+        # unit ECI position vector
+        navTransSol = self.navTransMsgIn()
+        r_eciToBody_eci = np.array(navTransSol.r_BN_N)
+        r_unit = -r_eciToBody_eci/np.linalg.norm(r_eciToBody_eci)
+        z_unit = np.array([0,0,1])
+
+        axis = np.cross(r_unit, z_unit)
+        rdotz = np.dot(r_unit, z_unit)
+        angle = np.arccos(np.clip(rdotz, -1.0, 1.0))  # clip for safety
+
+        if np.linalg.norm(axis) < 1e-12:
+            prv_eci2body = np.array([0.0, 0.0, 0.0])  # already aligned
+        else:   
+            #axis = axis / np.linalg.norm(axis)
+            prv_eci2body = angle * axis
+
+        # desired quat
+        new_q_ItoB_des = rbk.PRV2EP(prv_eci2body)
+        if new_q_ItoB_des[0] <1e-12:
+            new_q_ItoB_des = -new_q_ItoB_des
+
 
        
 
@@ -478,11 +515,21 @@ class quatBodyRateAccelPropagation(sysModel.SysModel):
         if False:
             self.bskLogger.bskLog(sysModel.BSK_INFORMATION, f"Guide_internal: Time: {CurrentSimNanos * 1.0E-9} s")
             self.bskLogger.bskLog(sysModel.BSK_INFORMATION, f"Guide_internal: Nav Sol Time Tag: {navSol.timeTag} s")
+            self.bskLogger.bskLog(sysModel.BSK_INFORMATION, f"Guide_internal: Nav Sol Trans Time Tag: {navTransSol.timeTag} s")
+
+            self.bskLogger.bskLog(sysModel.BSK_INFORMATION, f"Guide_internal: pos: {r_eciToBody_eci}")
+            self.bskLogger.bskLog(sysModel.BSK_INFORMATION, f"Guide_internal: angleBetween: {rbk.R2D*angle}")
+            self.bskLogger.bskLog(sysModel.BSK_INFORMATION, f"Guide_internal: q_Nav_ItoB: {rbk.MRP2EP(navSol.sigma_BN)}")
+
+            self.bskLogger.bskLog(sysModel.BSK_INFORMATION, f"Guide_internal: MRP_Des_ItoB: {rbk.EP2MRP(new_q_ItoB_des)}")
+            self.bskLogger.bskLog(sysModel.BSK_INFORMATION, f"Guide_internal: q_Des_ItoB: {new_q_ItoB_des}")
+            
+            '''
             self.bskLogger.bskLog(sysModel.BSK_INFORMATION, f"Guide_internal: Des_sigma_BR: {attRefMsg.sigma_RN}")
             self.bskLogger.bskLog(sysModel.BSK_INFORMATION, f"Guide_internal: Des_omega_BR_B: {attRefMsg.omega_RN_N}")
             self.bskLogger.bskLog(sysModel.BSK_INFORMATION, f"Guide_internal: q_outIntegrator: {q_outIntegrator}")
             self.bskLogger.bskLog(sysModel.BSK_INFORMATION, f"Guide_internal: dt: {dt}")
-
+            '''
         return
 
 
@@ -501,8 +548,8 @@ class errQuatFeedback(sysModel.SysModel):
         super(errQuatFeedback, self).__init__()
         
         # LQR determined gains
-        self.K1 = np.array([[0.009999999999999966, 1.6412140489928187e-18, 9.233440739038047e-19], [-1.170539564974882e-18, 0.009999999999999964, 3.0859191696933907e-18], [-1.4271048911574266e-18, 2.9191550050885132e-18, 0.00999999999999997]])
-        self.K2 = np.array([[0.17999999999999985, 1.541907306808781e-17, 7.943594551770889e-18], [-1.1757263094300452e-17, 0.17999999999999983, 2.3445702668273742e-17], [-2.0389202161734147e-17, 0.0, 0.17999999999999988]])
+        self.K1 = np.array([[0.010000000000000009, 0.0, 0.0], [0.0, 0.010000000000000009, 0.0], [0.0, 0.0, 0.010000000000000009]])
+        self.K2 = np.array([[0.1417744687875785, 0.0, 0.0], [0.0, 0.1417744687875785, 0.0], [0.0, 0.0, 0.1417744687875785]])
 
         # LQR state cost weight (Q) and control cost weight (R) for cost calc
         self.Q = np.diag([0.0001, 0.0001, 0.0001, 0.0001, 0.0001, 0.0001])
@@ -643,16 +690,15 @@ class errQuatFeedback(sysModel.SysModel):
 
 
         ## logging
-        self.bskLogger.bskLog(
-            bskLogging.BSK_INFORMATION,
-            f"Python Module ID {self.moduleID} ran Update at {CurrentSimNanos*1e-9}s",
-        )
-
         # All Python SysModels have self.bskLogger available
         # The logger level flags (i.e. BSK_INFORMATION) may be
         # accessed from sysModel
-        if False:
+        if True:
             """Sample Python module method"""
+            self.bskLogger.bskLog(
+            bskLogging.BSK_INFORMATION,
+            f"Python Module ID {self.moduleID} ran Update at {CurrentSimNanos*1e-9}s",
+        )
             self.bskLogger.bskLog(sysModel.BSK_INFORMATION, f"Time: {CurrentSimNanos * 1.0E-9} s")
             self.bskLogger.bskLog(sysModel.BSK_INFORMATION, f"Nav Sol Time Tag: {navMsgBuffer.timeTag} s")
             self.bskLogger.bskLog(sysModel.BSK_INFORMATION, f"Des_sigma_BR: {desAttMsgBuffer.sigma_RN}")
@@ -738,4 +784,4 @@ def computeEulerVecAttErrorFromQuats(q_ref,q_est):
 
 if __name__ == "__main__":
 
-    run(show_plots=False,)
+    run(show_plots=True)
