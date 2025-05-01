@@ -159,8 +159,8 @@ def run(show_plots):
     attDesPropObj.ddtOmega_ItoB_B_des = np.zeros((3,1))
 
     ### SPACECRAFT
-    scObject.hub.sigma_BNInit = rbk.PRV2MRP([macros.D2R*45.0, 0.0, macros.D2R*0.0]) # rbk.C2MRP(np.identity(3))  # sigma_BN_B
-    scObject.hub.omega_BN_BInit = [macros.D2R*15.0, macros.D2R*0.0, macros.D2R*0.0]  # rad/s - omega_BN_B
+    scObject.hub.sigma_BNInit = rbk.PRV2MRP([macros.D2R*45.0, 0.0, macros.D2R*10.0]) # rbk.C2MRP(np.identity(3))  # sigma_BN_B
+    scObject.hub.omega_BN_BInit = [macros.D2R*15.0, macros.D2R*2.0, macros.D2R*0.0]  # rad/s - omega_BN_B
     
     
     # ADD TO SIM
@@ -501,8 +501,8 @@ class errQuatFeedback(sysModel.SysModel):
         super(errQuatFeedback, self).__init__()
         
         # LQR determined gains
-        self.K1 = np.array([[0.009999999999999966, 1.6412140489928187e-18, 9.233440739038047e-19], [-1.170539564974882e-18, 0.009999999999999964, 3.0859191696933907e-18], [-1.4271048911574266e-18, 2.9191550050885132e-18, 0.00999999999999997]])
-        self.K2 = np.array([[0.17999999999999985, 1.541907306808781e-17, 7.943594551770889e-18], [-1.1757263094300452e-17, 0.17999999999999983, 2.3445702668273742e-17], [-2.0389202161734147e-17, 0.0, 0.17999999999999988]])
+        self.K1 = np.array([[0.010000000000000009, 0.0, 0.0], [0.0, 0.010000000000000009, 0.0], [0.0, 0.0, 0.010000000000000009]])
+        self.K2 = np.array([[0.1417744687875785, 0.0, 0.0], [0.0, 0.1417744687875785, 0.0], [0.0, 0.0, 0.1417744687875785]])
 
         # LQR state cost weight (Q) and control cost weight (R) for cost calc
         self.Q = np.diag([0.0001, 0.0001, 0.0001, 0.0001, 0.0001, 0.0001])

@@ -159,8 +159,8 @@ def run(show_plots):
     # scObject.hub.mHub = 750.0  # kg - spacecraft mass
     scObject.hub.r_BcB_B = [[0.0], [0.0], [0.0]]  # m - position vector of body-fixed point B relative to CM
     scObject.hub.IHubPntBc_B = unitTestSupport.np2EigenMatrix3d(I)
-    scObject.hub.sigma_BNInit = rbk.PRV2MRP([macros.D2R*45.0, 0.0, macros.D2R*0.0]) # rbk.C2MRP(np.identity(3))  # sigma_BN_B
-    scObject.hub.omega_BN_BInit = [macros.D2R*15.0, macros.D2R*0.0, macros.D2R*0.0]  # rad/s - omega_BN_B
+    scObject.hub.sigma_BNInit = rbk.PRV2MRP([macros.D2R*45.0, 0.0, macros.D2R*10.0]) # rbk.C2MRP(np.identity(3))  # sigma_BN_B
+    scObject.hub.omega_BN_BInit = [macros.D2R*15.0, macros.D2R*2.0, macros.D2R*0.0]  # rad/s - omega_BN_B
 
     # clear prior gravitational body and SPICE setup definitions
     gravFactory = simIncludeGravBody.gravBodyFactory()

@@ -81,8 +81,8 @@ print(K2_pol)
 # write gains and cost matrices to controller 
 
 # Prepare the updated gain and cost matrices as strings
-K1_str = f"self.K1 = np.array({K1_pol.tolist()})"
-K2_str = f"self.K2 = np.array({K2_pol.tolist()})"
+K1_str = f"self.K1 = np.array({K1.tolist()})"
+K2_str = f"self.K2 = np.array({K2.tolist()})"
 #K1_str = f"self.K1 = np.array({K1.tolist()})"
 #K2_str = f"self.K2 = np.array({K2.tolist()})"
 Q_str = f"self.Q = np.diag({Q.diagonal().tolist()})"
