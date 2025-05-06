@@ -29,7 +29,7 @@ def plot3DAttErr(timeMin,bodyEulerError,CtrlString):
         plt.ylabel(r'Body Attitude Error [deg]')
         plt.grid(True,'both','both')
         title = CtrlString + ' Body Frame Attitude Error'
-        plt.title(title)
+        #plt.title(title)
         pltName = title + "1"
 
 
@@ -42,10 +42,10 @@ def plot3DRateErr(timeMin,rateError,CtrlString):
                  label=r'$\delta\omega_' + axis[idx].lower() + '$')
         plt.legend(loc='best')
         plt.xlabel('Time [min]')
-        plt.ylabel(r'Angular Rate Tracking Error [deg/s]')
+        plt.ylabel(r'Rate Tracking Error [deg/s]')
         plt.grid(True,'both','both')
         title = CtrlString + ' Ang Rate Tracking Error'
-        plt.title(title)
+        #plt.title(title)
         pltName = title + "1" 
 
 def plotCostQuatVsOtherCtrl(TimeMin,quatCost,OtherCost,OtherCtrlString):
@@ -61,7 +61,7 @@ def plotCostQuatVsOtherCtrl(TimeMin,quatCost,OtherCost,OtherCtrlString):
     plt.ylabel(r'Cost')
     plt.grid(True,'both','both')
     title = 'Cost Comparision'
-    plt.title(title)
+    #plt.title(title)
 
 def plotCompareMagErr(TimeMin, quatAttErr, quatRateErr, OtherCostAttErr, OtherRateErr,OtherCtrlString):
     
@@ -72,28 +72,28 @@ def plotCompareMagErr(TimeMin, quatAttErr, quatRateErr, OtherCostAttErr, OtherRa
     # att error plot
     plt.figure()
     plt.plot(TimeMin, qMagAttErr,
-                 label='Error Quaternion Ctrlr')
+                 label='LQR')
     plt.plot(TimeMin, otherMagAttErr,
-                 label=OtherCtrlString +' Ctrlr')
+                 label=OtherCtrlString)
     plt.legend(loc='best')
     plt.xlabel('Time [min]')
     plt.ylabel('Body Attitude Error [deg]')
     plt.grid(True,'both','both')
     title = 'Mag. Att. Error Comparision'
-    plt.title(title)
+    #plt.title(title)
 
     # rate error plot
     plt.figure()
     plt.plot(TimeMin, qMagRateErr,
-                 label='Error Quaternion Ctrlr')
+                 label='LQR')
     plt.plot(TimeMin, otherMagRateErr,
-                 label=OtherCtrlString +' Ctrlr')
+                 label=OtherCtrlString)
     plt.legend(loc='best')
     plt.xlabel('Time [min]')
-    plt.ylabel('Body Ang. Rate Error [deg/s]')
+    plt.ylabel('Rate Tracking Error [deg/s]')
     plt.grid(True,'both','both')
     title = 'Mag. Rate Error Comparision'
-    plt.title(title)
+    #plt.title(title)
 
 def plotMagTrqQuatVsOtherCtrl(TimeMin,quatLr,OtherLr,OtherCtrlString):
 
@@ -102,15 +102,15 @@ def plotMagTrqQuatVsOtherCtrl(TimeMin,quatLr,OtherLr,OtherCtrlString):
 
     plt.figure()
     plt.plot(TimeMin, quatLr,
-                 label=f'Error Quaternion Torque Cmd | Total Torque = {sumLrQ:.2f} Nm')
+                 label=f'LQR | Total Torque = {sumLrQ:.2f} Nm')
     plt.plot(TimeMin, OtherLr,
-                 label= OtherCtrlString + f' Torque Cmd | Total Torque = {sumLrMrp:.2f} Nm')
+                 label= OtherCtrlString + f' | Total Torque = {sumLrMrp:.2f} Nm')
     plt.legend(loc='best')
     plt.xlabel('Time [min]')
-    plt.ylabel('Control Torque $L_r$ [Nm]')
+    plt.ylabel('Applied Torque $L_r$ [Nm]')
     plt.grid(True,'both','both')
-    title = 'Control Torque Comparision'
-    plt.title(title)
+    title = 'Applied Torque Comparision'
+    #plt.title(title)
 
 
 
@@ -214,15 +214,21 @@ if __name__ == "__main__":
 
 
     # lqr indv plots    
+    '''
     plot3DAttErr(lqr_q_time_min,lqr_q_eulerErrDeg,'LQR Gain')
     plot3DRateErr(lqr_q_time_min,lqr_q_w_bi_b_Deg,'LQR Gain')
-
+   
     plot3DAttErr(pp_q_time_min,pp_q_eulerErrDeg,'Pole Placement Gain')
-    plot3DRateErr(pp_q_time_min,pp_q_w_bi_b_Deg,'LQR Gain')
-
+    plot3DRateErr(pp_q_time_min,pp_q_w_bi_b_Deg,'Pole Placement Gain')
+    '''
+    plotCompareMagErr(lqr_q_time_min, lqr_q_eulerErrDeg, lqr_q_w_bi_b_Deg,
+                      pp_q_eulerErrDeg, pp_q_w_bi_b_Deg, "Pole Placement")
     
-    plotCostQuatVsOtherCtrl(lqr_q_costTime,lqr_q_cost,pp_q_cost,'Pole Placement Gain')
-
+    lqr_LrNorm = np.linalg.norm(lqr_q_dataLr, axis=1)
+    pp_LrNorm = np.linalg.norm(pp_q_dataLr, axis=1)
+    plotMagTrqQuatVsOtherCtrl(lqr_q_time_min,lqr_LrNorm,pp_LrNorm,"Pole Placement")
+    
+    #plotCostQuatVsOtherCtrl(pp_q_costTime,lqr_q_cost,pp_q_cost,'Pole Placement Gain')
     plt.show()
     plt.close("all")       
 
