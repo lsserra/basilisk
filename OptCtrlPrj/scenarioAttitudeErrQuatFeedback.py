@@ -397,7 +397,7 @@ def run(show_plots,gainMethod):
               dataLr=dataLr,timeLr_min=timeAxis*macros.NANO2MIN,
               eulerErrDeg= macros.R2D * bodyEulerErrorVec_store,
               w_bi_b_Deg=w_err, time_min=attTime*macros.NANO2MIN,
-              Jk_store=Jk_store,costTime=costTime)
+              Jk_store=Jk_store,costTime=costTime*macros.NANO2MIN)
     
 
 
