@@ -169,7 +169,7 @@ def run(show_plots,gainMethod):
     scSim.AddModelToTask(simTaskName, scObject)
 
     
-    ###################################################
+    ######################################
 
     # setup extForceTorque module
     # the control torque is read in through the messaging system
@@ -448,9 +448,9 @@ class quatBodyRateAccelPropagation(sysModel.SysModel):
 
 
         
-        ##################################################################
+        ##################################
         # quaternion attitude propagation of an initial desired quaternion
-        ##################################################################
+        ################################
 
         # get last desired attiude
         last_q_ItoB = self.last_q_ItoB_des
@@ -478,10 +478,10 @@ class quatBodyRateAccelPropagation(sysModel.SysModel):
 
         '''
 
-        ##################################################################
+        #######################
         # guidance to project body z in line with position vector
         # point body z at center of the earth regardless of orbit
-        ##################################################################
+        ####################
 
         # unit ECI position vector
         navTransSol = self.navTransMsgIn()
@@ -561,8 +561,8 @@ class errQuatFeedback(sysModel.SysModel):
         super(errQuatFeedback, self).__init__()
         
         # LQR determined gains
-        self.K1 = np.array([[0.040000000000000056, -2.9860707892357773e-18, -7.011235733052289e-18], [1.3416239263270546e-17, 0.04000000000000004, 6.476682410223697e-18], [1.6225094939145334e-17, 1.4463853805174492e-17, 0.04000000000000004]])
-        self.K2 = np.array([[0.3600000000000002, 1.4848967280487058e-17, -2.8433920621620727e-17], [7.115810861634531e-17, 0.3600000000000001, 5.129827293943765e-17], [1.0870198489244562e-17, 3.774069879352223e-17, 0.36000000000000015]])
+        self.K1 = np.array([[0.010000000000000009, 0.0, 0.0], [0.0, 0.010000000000000009, 0.0], [0.0, 0.0, 0.010000000000000009]])
+        self.K2 = np.array([[0.1417744687875785, 0.0, 0.0], [0.0, 0.1417744687875785, 0.0], [0.0, 0.0, 0.1417744687875785]])
 
         # LQR state cost weight (Q) and control cost weight (R) for cost calc
         self.Q = np.diag([0.0001, 0.0001, 0.0001, 0.0001, 0.0001, 0.0001])
