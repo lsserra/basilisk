@@ -78,20 +78,20 @@ def plotCompareMagErr(TimeMin, quatAttErr, quatRateErr, mrpAttErr, mrpRateErr):
     plt.ylabel('Body Attitude Error [deg]')
     plt.grid(True,'both','both')
     title = 'Mag. Att. Error Comparision'
-    plt.title(title)
+   # plt.title(title)
 
     # rate error plot
     plt.figure()
     plt.plot(TimeMin, qMagRateErr,
-                 label='Error Quaternion Ctrlr')
+                 label='LQR Error Quaternion')
     plt.plot(TimeMin, mrpMagRateErr,
-                 label='MRP Ctrlr')
+                 label='MRP PD')
     plt.legend(loc='best')
     plt.xlabel('Time [min]')
-    plt.ylabel('Body Ang. Rate Error [deg/s]')
+    plt.ylabel('Rate Tracking Error [deg/s]')
     plt.grid(True,'both','both')
     title = 'Mag. Rate Error Comparision'
-    plt.title(title)
+   # plt.title(title)
 
 def plotMagTrqQuatVsMrp(TimeMin,quatLr,MrpLr):
 
@@ -100,15 +100,15 @@ def plotMagTrqQuatVsMrp(TimeMin,quatLr,MrpLr):
 
     plt.figure()
     plt.plot(TimeMin, quatLr,
-                 label=f'Error Quaternion Torque Cmd | Total Torque = {sumLrQ:.2f} Nm')
+                 label=f'LQR Error Quaternion | Total Torque = {sumLrQ:.2f} Nm')
     plt.plot(TimeMin, MrpLr,
-                 label=f'MRP Torque Cmd | Total Torque = {sumLrMrp:.2f} Nm')
+                 label=f'MRP PD | Total Torque = {sumLrMrp:.2f} Nm')
     plt.legend(loc='best')
     plt.xlabel('Time [min]')
     plt.ylabel('Control Torque $L_r$ [Nm]')
     plt.grid(True,'both','both')
     title = 'Control Torque Comparision'
-    plt.title(title)
+   # plt.title(title)
 
 
 
@@ -162,11 +162,11 @@ if __name__ == "__main__":
     plt.close("all")
     # plotCostQuatVsMrp(costTime,q_cost,mrp_cost)
 
-    plot3DAttErr(q_time_min,q_eulerErrDeg,'Error Quaternion Controller')
-    plot3DRateErr(q_time_min,q_w_bi_b_Deg,'Error Quaternion Controller')
+    #plot3DAttErr(q_time_min,q_eulerErrDeg,'Error Quaternion Controller')
+    #plot3DRateErr(q_time_min,q_w_bi_b_Deg,'Error Quaternion Controller')
 
-    plot3DAttErr(mrp_time_min,mrp_eulerErr,'MRP Feedback Controller')
-    plot3DRateErr(mrp_time_min,-mrp_omega_BR,'MRP Feedback Controller') # negate to align with quat ang rate err def.
+    #plot3DAttErr(mrp_time_min,mrp_eulerErr,'MRP Feedback Controller')
+    #plot3DRateErr(mrp_time_min,-mrp_omega_BR,'MRP Feedback Controller') # negate to align with quat ang rate err def.
 
     plotCompareMagErr(q_time_min, q_eulerErrDeg, q_w_bi_b_Deg,
                       mrp_eulerErr, mrp_omega_BR)

@@ -147,8 +147,8 @@ def run(show_plots):
     #
 
     ## SIM TIME
-    # simulationTime = macros.sec2nano(0.25 * P)
-    simulationTime = macros.min2nano(4.)
+    simulationTime = macros.sec2nano( P)
+    #simulationTime = macros.min2nano(4.)
 
     ### CONTROLLER
     # assume q_ItoB(t=0) is identity 
@@ -317,10 +317,10 @@ def run(show_plots):
                  label=r'$\sigma_' + str(idx) + '$')
     plt.legend(loc='lower right')
     plt.xlabel('Time [min]')
-    plt.ylabel(r'Attitude Error Body Frame [deg]')
+    plt.ylabel(r'Body Attitude Error [deg]')
     plt.grid(True,'both','both')
     title = 'Body Frame Attitude Error'
-    plt.title(title)
+    #plt.title(title)
     figureList = {}
     pltName = title + "1"
     figureList[pltName] = plt.figure(4)
@@ -383,11 +383,12 @@ def run(show_plots):
     figureList[pltName] = plt.figure(7)
 
     ## save off data
+    '''
     np.savez('OptCtrlPrj/quat.npz',
               dataLr=dataLr,timeLr_min=timeAxis*macros.NANO2MIN,
               eulerErrDeg= macros.R2D * bodyEulerErrorVec_store,
               w_bi_b_Deg=w_err, time_min=attTime*macros.NANO2MIN)
-
+    '''
 
 
 
@@ -738,4 +739,4 @@ def computeEulerVecAttErrorFromQuats(q_ref,q_est):
 
 if __name__ == "__main__":
 
-    run(show_plots=False,)
+    run(show_plots=True)
