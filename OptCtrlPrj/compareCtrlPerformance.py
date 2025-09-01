@@ -70,9 +70,9 @@ def plotCompareMagErr(TimeMin, quatAttErr, quatRateErr, mrpAttErr, mrpRateErr):
     # att error plot
     plt.figure()
     plt.plot(TimeMin, qMagAttErr,
-                 label='Error Quaternion Ctrlr')
+                 label='LQR Error Quaternion')
     plt.plot(TimeMin, mrpMagAttErr,
-                 label='MRP Ctrlr')
+                 label='MRP PD')
     plt.legend(loc='best')
     plt.xlabel('Time [min]')
     plt.ylabel('Body Attitude Error [deg]')
