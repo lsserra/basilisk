@@ -3,6 +3,7 @@ CMakeFiles/
 **/_VizFiles/
 CMakeCache.txt
 .DS_Store
+data/
 dist/
 dist3/
 .pytest_cache

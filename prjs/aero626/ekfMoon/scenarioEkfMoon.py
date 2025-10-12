@@ -1,117 +1,95 @@
 
-#  ISC License
-#
-#  Copyright (c) 2024, Autonomous Vehicle Systems Lab, University of Colorado at Boulder
-#
-#  Permission to use, copy, modify, and/or distribute this software for any
-#  purpose with or without fee is hereby granted, provided that the above
-#  copyright notice and this permission notice appear in all copies.
-#
-#  THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
-#  WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
-#  MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
-#  ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
-#  WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
-#  ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
-#  OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
-#
-
-r"""
-Overview
---------
-
-This script sets up a 3-DOF spacecraft that is operating near-Halo orbit at L2 Earth-Moon Lagrange points. The purpose
-is to illustrate how to set up the spacecraft's initial conditions to create a near-Halo orbit and convert the barycenter focused
-non-dimensional ICs to earth-centered inertial frame components.
-
-The script is found in the folder ``basilisk/examples`` and executed by using::
-
-    python3 scenarioHaloOrbit.py
-
-For this simulation, the Earth is assumed stationary, and the Moon's trajectory is generated using SPICE. Refer to
-:ref:`scenarioOrbitMultiBody` to learn how to create multiple gravity bodies and read a SPICE trajectory.
-
-When the simulation completes, three plots are shown. The first plot shows the orbits of the Moon and spacecraft in
-the Earth-centered inertial frame. The second and third plots show the motion of the spacecraft in a frame rotating
-with the Moon. In the second plot, the y-axis represents the Moon's velocity direction, and in the third plot, the
-y-axis represents the cross product of the Moon's position vector and velocity vector.
-
-Illustration of Simulation Results
-----------------------------------
-
-The following images illustrate the simulation run results with the following settings:
-
-::
-
-    showPlots = True
-
-.. image:: /_images/Scenarios/scenarioHaloOrbitFig1.svg
-    :align: center
-
-.. image:: /_images/Scenarios/scenarioHaloOrbitFig2.svg
-    :align: center
-
-.. image:: /_images/Scenarios/scenarioHaloOrbitFig3.svg
-    :align: center
-
-
-"""
-
-#
-# Basilisk Scenario Script and Integrated Test
-#
-# Purpose:  This scenario illustrates the near-Halo orbit of a spacecraft.
-# Author:   Yumeka Nagano
-# Creation Date:  Feb. 12, 2024
-#
-import pickle
-
 import os
-from datetime import datetime
+from copy import copy
+
+from Basilisk.topLevelModules import pyswice
+from datetime import datetime, timedelta
+
+from Basilisk.utilities.pyswice_spk_utilities import spkRead
+
+
 
 import matplotlib.pyplot as plt
 import numpy as np
+# To play with any scenario scripts as tutorials, you should make a copy of them into a custom folder
+# outside of the Basilisk directory.
+#
+# To copy them, first find the location of the Basilisk installation.
+# After installing, you can find the installed location of Basilisk by opening a python interpreter and
+# running the commands:
 from Basilisk import __path__
-from Basilisk.simulation import spacecraft
-from Basilisk.topLevelModules import pyswice
-from Basilisk.utilities import (SimulationBaseClass, macros, orbitalMotion,
-                                simIncludeGravBody, unitTestSupport, vizSupport)
-from Basilisk.utilities.pyswice_spk_utilities import spkRead
 
 bskPath = __path__[0]
 fileName = os.path.basename(os.path.splitext(__file__)[0])
 
-def run(showPlots=True):
+# Copy the folder `{basiliskPath}/examples` into a new folder in a different directory.
+# Now, when you want to use a tutorial, navigate inside that folder, and edit and execute the *copied* integrated tests.
+
+
+# import simulation related support
+from Basilisk.simulation import spacecraft
+# general support file with common unit test functions
+# import general simulation support files
+from Basilisk.utilities import (SimulationBaseClass, macros, orbitalMotion,
+                                simIncludeGravBody, unitTestSupport, vizSupport)
+
+# always import the Basilisk messaging support
+
+def run(showPlots, orbitCase, useSphericalHarmonics, planetCase):
     """
+    At the end of the python script you can specify the following example parameters.
+
     Args:
-        showPlots (bool): Determines if the script should display plots
+        show_plots (bool): Determines if the script should display plots
+        orbitCase (str):
+
+            ======  ============================
+            String  Definition
+            ======  ============================
+            'LEO'   Low Earth Orbit
+            'GEO'   Geosynchronous Orbit
+            'GTO'   Geostationary Transfer Orbit
+            ======  ============================
+
+        useSphericalHarmonics (Bool): False to use first order gravity approximation: :math:`\\frac{GMm}{r^2}`
+
+        planetCase (str): {'Earth', 'Mars'}
     """
 
     # Create simulation variable names
-    simTaskName = "dynTask"
-    simProcessName = "dynProcess"
+    simTaskName = "simTask"
+    simProcessName = "simProcess"
 
-    # Create a sim module as an empty container
+    #  Create a sim module as an empty container
     scSim = SimulationBaseClass.SimBaseClass()
+
+    # (Optional) If you want to see a simulation progress bar in the terminal window, the
+    # use the following SetProgressBar(True) statement
     scSim.SetProgressBar(True)
 
-    # Create the simulation process (dynamics)
+    #  create the simulation process
     dynProcess = scSim.CreateNewProcess(simProcessName)
 
-    # Add the dynamics task to the dynamics process and specify the integration update time
-    timestep = 300
-    simulationTimeStep = macros.sec2nano(timestep)
+    # create the dynamics task and specify the integration update time
+    simulationTimeStep = macros.sec2nano(10.)
     dynProcess.addTask(scSim.CreateNewTask(simTaskName, simulationTimeStep))
 
-    # Setup the spacecraft object
+    # setup the simulation tasks/objects
+    # initialize spacecraft object and set properties
+    # The dynamics simulation is setup using a Spacecraft() module.
     scObject = spacecraft.Spacecraft()
-    scObject.ModelTag = "HaloSat"
+    scObject.ModelTag = "bsk-Sat"
 
-    # Add spacecraft object to the simulation process
-    # Make this model a lower priority than the SPICE object task
-    scSim.AddModelToTask(simTaskName, scObject, 0)
+    # add spacecraft object to the simulation process
+    scSim.AddModelToTask(simTaskName, scObject)
 
-    # Setup gravity factory and gravity bodies
+    # setup Gravity Body
+    # The first step to adding gravity objects is to create the gravity body factor class.  Note that
+    # this call will create an empty gravitational body list each time this script is called.  Thus, there
+    # is not need to clear any prior list of gravitational bodies.
+    gravFactory = simIncludeGravBody.gravBodyFactory()
+
+     # Setup gravity factory and gravity bodies
     # Include bodies as a list of SPICE names
     gravFactory = simIncludeGravBody.gravBodyFactory()
     gravBodies = gravFactory.createBodies('moon', 'earth')
@@ -122,10 +100,12 @@ def run(showPlots=True):
 
     # Create default SPICE module, specify start date/time.
     timeInitString = "2022 August 31 15:00:00.0"
-    bsk_path = __path__[0]
-    spiceObject = gravFactory.createSpiceInterface(bsk_path + "/supportData/EphemerisData/", time=timeInitString,
-                                                   epochInMsg=True)
-    spiceObject.zeroBase = 'earth'
+    spiceTimeStringFormat = '%Y %B %d %H:%M:%S.%f'
+    timeInit = datetime.strptime(timeInitString, spiceTimeStringFormat)
+    spiceObject = gravFactory.createSpiceInterface(time=timeInitString, epochInMsg=True)
+    spiceObject.zeroBase = 'Earth'
+
+    print(spiceObject.planetFrames)
 
     # Add SPICE object to the simulation task list
     scSim.AddModelToTask(simTaskName, spiceObject, 1)
@@ -146,7 +126,7 @@ def run(showPlots=True):
     earth = gravBodies['earth']
     oe = orbitalMotion.rv2elem(earth.mu, moon_rN_init, moon_vN_init)
     moon_a = oe.a
-    
+
     # Direction Cosine Matrix (DCM) from earth centered inertial frame to earth-moon rotation frame
     DCMInit = np.array([moon_rN_init/np.linalg.norm(moon_rN_init),moon_vN_init/np.linalg.norm(moon_vN_init),
                         np.cross(moon_rN_init, moon_vN_init) / np.linalg.norm(np.cross(moon_rN_init, moon_vN_init))])
@@ -169,8 +149,8 @@ def run(showPlots=True):
     scObject.hub.v_CN_NInit = vN
 
     # Set simulation time
-    simulationTime = macros.day2nano(17.5)
-
+    # simulationTime = macros.day2nano(17.5)
+    simulationTime = macros.day2nano(5.5)
     # Setup data logging
     numDataPoints = 1000
     samplingTime = unitTestSupport.samplingTime(simulationTime, simulationTimeStep, numDataPoints)
@@ -204,21 +184,6 @@ def run(showPlots=True):
     moonPos = MoonDataRec.PositionVector
     moonVel = MoonDataRec.VelocityVector
 
-
-        # Bundle everything in one dictionary
-    data_bundle = {
-        "time": timeData,
-        "sc_pos": posData,
-        "sc_vel": velData,
-        "moon_pos": moonPos,
-        "moon_vel": moonVel
-    }
-
-    # Write to pickle file
-    with open("data/halosim.pkl", "wb") as f:
-        pickle.dump(data_bundle, f)
-    print("Simulation data boxed up into data/halosim.pkl")
-    
     # Plot results
     np.set_printoptions(precision=16)
     plt.close("all")
@@ -333,8 +298,10 @@ def run(showPlots=True):
 
     return figureList
 
-
 if __name__ == "__main__":
     run(
-        True    # Show plots
+        True,        # show_plots
+        'LEO',       # orbit Case (LEO, GTO, GEO)
+        False,       # useSphericalHarmonics
+        'moon'      # planetCase (Earth, Mars)
     )

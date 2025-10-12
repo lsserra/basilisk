@@ -1,0 +1,6 @@
+--- Basilisk Dynamics ---
+
+Q: If I include a bodies gravitational force, how is that realized in the simulation?
+	i.e. if I my model is propagating the 'truth dynamics' my state error should be zero
+A: Per dist3/Basilisk/simulation/gravityEffector.py I believe that when adding a bodies gravity to the gravFactory(),
+   if body has ephemeris, it will use point mass gravity model with body mu
