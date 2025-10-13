@@ -42,6 +42,12 @@ class Quaternion:
     def normalize(self):
         self.q /= self.norm()
         return self
+    
+    def ensureScalarPos(self):
+        if (self.scalar() < 1e-6):
+            return -self
+        else:
+            return self
 
     def inverse(self):
         """Inverse quaternion (for unit q, same as conjugate)."""
@@ -90,26 +96,22 @@ class Quaternion:
 
     # --- Return q dot given angluar rate, as an np array --
     @staticmethod
-    def dqdt(self,t,omega,q):
+    def dqdt(t,omega,q):
         qv = q[:3]
         q0 = q[-1]
         wx, wy, wz = omega
 
-        qv = self.vector()
-        q0 = self.scalar()
         qx, qy, qz = qv
-        I = np.eye(3)
-        qx_skew = np.array([
-            [0, -qz, qy],
-            [qz, 0, -qx],
-            [-qy, qx, 0]
+        omega_skew = np.array([
+            [0, -wz, wy],
+            [wz, 0, -wx],
+            [-wy, wx, 0]
         ])
         Omega = np.zeros((4,4))
-        Omega[:3,:3] = -qx_skew
-        Omega[:3,-1] = -qv.T
-        Omega[-1,:3] = qv
-        qnp = self.as_array()
-        qdot = 0.5 * Omega@qnp
+        Omega[:3,:3] = -omega_skew
+        Omega[:3,3] = omega
+        Omega[3,:3] = -omega
+        qdot = 0.5 * Omega@q
         
         return qdot
 
@@ -167,6 +169,44 @@ class Quaternion:
     @staticmethod
     def identity():
         return Quaternion([0, 0, 0], 1.0)
+    
+    @staticmethod
+    def computeEulerVecAttErrorFromQuats(q_ref: "Quaternion", q_est: "Quaternion"):
+        """
+        
+        given these are attitde quaternions (rotation from Ref Frame to Tgt Frame)
+        this function returns the Euler Vector of the error in the Tgt frame in radians
+        
+        """
+        # Ensure both quaternions have positive scalar parts
+        if q_ref.scalar() < 0:
+            q_ref = -q_ref
+        if q_est.scalar() < 0:
+            q_est = -q_est
+
+        # Quaternion attitude error (reference → estimated) expressed in object frame
+        q_err = q_ref * q_est.conj()
+
+        # Convert to array form [qx, qy, qz, q0]
+        q_err_arr = q_err.as_array()
+
+        # Ensure positive scalar part for uniqueness
+        if q_err_arr[-1] < 0:
+            q_err_arr = -q_err_arr
+
+        q0 = q_err_arr[-1]
+
+        # Handle small angle numerically
+        if (np.abs((q0 - 1.0)) < 1e-12):
+            return np.zeros(3)
+
+        # Principal rotation angle and axis
+        phi = 2 * np.arccos(q0)
+        ehat = q_err_arr[:3] / np.sin(phi/2)
+
+        # Euler (principal) rotation vector
+        return phi * ehat
+
 
     # --- Representation ---
 
