@@ -4,6 +4,8 @@ from copy import copy
 import pickle
 from Basilisk.topLevelModules import pyswice
 from datetime import datetime, timedelta
+from Basilisk.simulation import imuSensor
+from Basilisk.utilities import RigidBodyKinematics as rbk
 
 from Basilisk.utilities.pyswice_spk_utilities import spkRead
 
@@ -120,6 +122,12 @@ def run(showPlots, savePkl):
     scObject.hub.r_CN_NInit = rN
     scObject.hub.v_CN_NInit = vN
 
+    # initial tip off
+    ### SPACECRAFT
+    scObject.hub.sigma_BNInit = rbk.PRV2MRP([macros.D2R*0.0, 0.0, macros.D2R*0.0]) # rbk.C2MRP(np.identity(3))  # sigma_BN_B
+    scObject.hub.omega_BN_BInit = [macros.D2R*0.0, macros.D2R*5.0, macros.D2R*0.0]  # rad/s - omega_BN_B
+    
+
     # set the simulation time
     n = np.sqrt(moonBody.mu / oe.a / oe.a / oe.a)
     P = 2. * np.pi / n
@@ -128,6 +136,27 @@ def run(showPlots, savePkl):
     numDataPoints = 1000
     samplingTime = unitTestSupport.samplingTime(simulationTime, simulationTimeStep, numDataPoints)
 
+
+
+    # --- add imu --- #
+    imu = imuSensor.ImuSensor()
+    imu.ModelTag = "imu"    
+    
+    # Configure gyro noise (rad/s)
+    # imu.senRotBias = np.array([0.,0.,0.])
+    senRotNoiseStd = 0.0001 # rad/s
+    walkBound = 0.01 # rad/s
+    PMatrix = np.eye(3)* senRotNoiseStd**2 # cholesky defactorization of noise covariance matrix, drives Gauss Markov Process
+    L = np.linalg.cholesky(PMatrix)
+    imu.PMatrixGyro = L
+    AMatrixGyro = np.zeros((3,3))
+    imu.AMatrixGyro = AMatrixGyro
+    imu.setErrorBoundsGyro([walkBound, walkBound, walkBound])
+    imu.scStateInMsg.subscribeTo(scObject.scStateOutMsg)
+    # Add IMU to simulation
+    scSim.AddModelToTask(simTaskName, imu)
+
+    
     # Setup spacecraft data recorder
     scDataRec = scObject.scStateOutMsg.recorder(samplingTime)
     MoonDataRec = spiceObject.planetStateOutMsgs[0].recorder(samplingTime)
@@ -135,6 +164,10 @@ def run(showPlots, savePkl):
     scSim.AddModelToTask(simTaskName, scDataRec)
     scSim.AddModelToTask(simTaskName, MoonDataRec)
     scSim.AddModelToTask(simTaskName, EarthDataRec)
+    # Set up messages for both IMU's
+    imuDataRec = imu.sensorOutMsg.recorder(samplingTime)
+    scSim.AddModelToTask(simTaskName, imuDataRec)
+    
 
     # Initialize simulation
     scSim.InitializeSimulation()
@@ -151,6 +184,9 @@ def run(showPlots, savePkl):
     moonVel = MoonDataRec.VelocityVector
     earthPos = EarthDataRec.PositionVector
     earthVel = EarthDataRec.VelocityVector
+    gryoAngVel = imuDataRec.AngVelPlatform
+    gyroTime = imuDataRec.times()
+    
 
 
     posData[:] -= moonPos[:]
@@ -158,22 +194,22 @@ def run(showPlots, savePkl):
 
 
             # Bundle everything in one dictionary
-    data_bundle = {
-        "time": timeData,
-        "sc_pos": posData,
-        "sc_vel": velData,
-        "moon_pos": moonPos,
-        "moon_vel": moonVel,
-        "earth_pos": earthPos,
-        "earth_vel": earthVel
-    }
-
-    # Write to pickle file
-    with open("data/MoonCentralBody.pkl", "wb") as f:
-        pickle.dump(data_bundle, f)
-    print("Simulation data boxed up into data/MoonCentralBody.pkl")
-    
-
+    if savePkl:
+        data_bundle = {
+            "time": timeData,
+            "sc_pos": posData,
+            "sc_vel": velData,
+            "moon_pos": moonPos,
+            "moon_vel": moonVel,
+            "earth_pos": earthPos,
+            "earth_vel": earthVel,
+            "gryoAngVel": gryoAngVel,
+            "timeGyro": gyroTime
+        }
+        # Write to pickle file
+        with open("data/MoonCentralBody.pkl", "wb") as f:
+            pickle.dump(data_bundle, f)
+        print("Simulation data boxed up into data/MoonCentralBody.pkl")
 
     
 
@@ -225,6 +261,20 @@ def run(showPlots, savePkl):
     plt.plot(timeData * macros.NANO2SEC / P,alt/1000.)
     plt.ylabel('Altitude [km]')
     plt.xlabel('Time [orbits]')
+
+
+
+    gryoAngVel_array = np.array(gryoAngVel)
+    stdGryo = np.std(gryoAngVel_array[1:,:],axis=0)
+    print(f"Gryo STD (rad/s): ")
+    print(stdGryo)
+    plt.figure(4, figsize=(12, 8))
+    plt.plot(gyroTime * macros.NANO2SEC / P, macros.R2D * gryoAngVel_array, label='IMU (Bounded Random Walk)', alpha=0.7)
+    plt.xlabel('Orbits')
+    plt.ylabel('Angular Velocity (deg/s)')
+    plt.title('IMU Gyro Measurements')
+    plt.legend()
+    plt.grid(True)
 
 
     if showPlots:
