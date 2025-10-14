@@ -35,7 +35,7 @@ from Basilisk.utilities import (SimulationBaseClass, macros, orbitalMotion,
 
 # always import the Basilisk messaging support
 
-def run(showPlots, orbitCase, useSphericalHarmonics, planetCase):
+def run(showPlots, savePkl):
    
     # Create simulation variable names
     simTaskName = "simTask"
@@ -212,7 +212,8 @@ def run(showPlots, orbitCase, useSphericalHarmonics, planetCase):
         rData.append(oeData.rmag)
         fData.append(oeData.f + oeData.omega - oe.omega)
     plt.plot(posData[:,0] / 1000, posData[:,1] / 1000, color='#aa0000', linewidth=3.0)
-
+    plt.xlabel("X-Intertial [km]")
+    plt.ylabel("Y-Intertial [km]")
     
     pltName = fileName + "2"
     figureList[pltName] = plt.figure(2)
@@ -242,7 +243,5 @@ def run(showPlots, orbitCase, useSphericalHarmonics, planetCase):
 if __name__ == "__main__":
     run(
         True,        # show_plots
-        'LEO',       # orbit Case (LEO, GTO, GEO)
-        False,       # useSphericalHarmonics
-        'moon'      # planetCase (Earth, Mars)
+        False,      # save pkl file
     )

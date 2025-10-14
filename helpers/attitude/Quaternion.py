@@ -45,7 +45,7 @@ class Quaternion:
     
     def ensureScalarPos(self):
         if (self.scalar() < 1e-6):
-            return -self
+            return Quaternion(qv=-self.vector(),q0=-self.scalar())
         else:
             return self
 
@@ -179,10 +179,8 @@ class Quaternion:
         
         """
         # Ensure both quaternions have positive scalar parts
-        if q_ref.scalar() < 0:
-            q_ref = -q_ref
-        if q_est.scalar() < 0:
-            q_est = -q_est
+        q_ref.ensureScalarPos()
+        q_est.ensureScalarPos()
 
         # Quaternion attitude error (reference → estimated) expressed in object frame
         q_err = q_ref * q_est.conj()

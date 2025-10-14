@@ -56,7 +56,7 @@ v_MoonEarth_N = moon_vel - earth_vel
 
 
 # create MCMF routine
-inclination_MoonNPole = 6.68 # deg
+lunarObliquityToEcliptic = 1.54 # deg
 
 
 # grab init moon r and r dot
@@ -68,27 +68,20 @@ dotPrd = np.linalg.vecdot(
     r_MN_N_init/np.linalg.norm(r_MN_N_init),
     rd_MN_N_init/np.linalg.norm(rd_MN_N_init)
 )
-
-# Direction Cosine Matrix from earth centered inertial frame to earth-moon rotation frame
-rhat1 = r_MN_N_init/np.linalg.norm(r_MN_N_init)
-v_perp = rd_MN_N_init - np.dot(rd_MN_N_init, rhat1) * rhat1
-rhat2 = v_perp / np.linalg.norm(v_perp)
-rhat3 = np.cross(rhat1, rhat2)
-T_RN = np.column_stack((rhat1, rhat2, rhat3))
                     
 # DCM definition of MCMF frame
 zhat = np.array([0.,0.,1.])
 xhat = np.array([1.,0.,0.])
-mhat3 = T2(np.deg2rad(inclination_MoonNPole)) @ zhat
-rhat1_orthog = xhat - np.dot(xhat,mhat3) * xhat
-rhat1_orthog = rhat1_orthog / np.linalg.norm(rhat1_orthog)
+mhat3 = T2(np.deg2rad(lunarObliquityToEcliptic)) @ zhat
+xhat1_orthog = xhat - np.dot(xhat,mhat3) * xhat
+rhat1_orthog = xhat1_orthog / np.linalg.norm(xhat1_orthog)
 mhat2 = np.cross(mhat3,rhat1_orthog)
 mhat1 = np.cross(mhat2,mhat3)
 T_MN = np.column_stack([mhat1,mhat2,mhat3])
 
-
 cosang = np.clip(np.dot(mhat3, zhat), -1.0, 1.0)
 angle_deg = np.rad2deg(np.arccos(cosang))
+
 
 q_MN_0 = Quaternion.from_DCM(T_MN)
 q_MN_0.ensureScalarPos()
@@ -113,10 +106,19 @@ def dqdt_wrapper(t, q):
 # create a fake landmark on the 'lunar surface' 
 # propagate MCMF attitude and ensure that the landmark does not move in it's frame 
 
+r_BM_M_store = []
+drMdt_BM_M_store = [] # time derivative of position B wrt M, as seen from M, coordinatized in M
 q_MN_store = []
 
 q_MN_tkm =q_MN_0.as_array()
 inclChk_deg= np.rad2deg(2*np.arcsin(q_MN_tkm[1]))
+
+
+# take vector in M and map to N, then plot traj
+r_PM_M = np.array([1737.4e3 + 1.e3 , 0.0, 0.0])
+eclipticPlane_r_PM_M = None
+r_PM_N_store = []
+eclipticPlane_r_PM_M_store = []
 
 for i, tk in enumerate(timeData):
     if i == 0:
@@ -124,7 +126,9 @@ for i, tk in enumerate(timeData):
         continue
 
     tkm = timeData[i-1]
+    ### MCMF TRUTH GENERATION ###
 
+    # --- attitude --- #
     sol = solve_ivp(
         fun=dqdt_wrapper,
         t_span=[tkm, tk],
@@ -145,6 +149,30 @@ for i, tk in enumerate(timeData):
     q_MN_store.append(qObj)
     q_MN_tkm = q_MN_tk
 
+    q_MN_tk_obj = qObj
+
+
+    # --- position --- #
+    r_BM_N = sc_pos[i,:]
+    r_BM_M = q_MN_tk_obj.rotate(r_BM_N)
+    r_BM_M_store.append(r_BM_M)
+
+    # --- velocity --- #
+    rdot_BM_N = sc_vel[i,:]
+    drMdt_BM_M = rdot_BM_N - (np.cross(w_MN_M, r_BM_M))
+    drMdt_BM_M_store.append(drMdt_BM_M)
+
+    ## foo position vector of point p
+    Nhat3 = np.array([0., 0., 1.])
+    Nhat3_M = q_MN_tk_obj.rotate(Nhat3)
+    # remove portion of vector normal to eclliptic plane
+    eclipticPlane_r_PM_M = r_PM_M - np.dot(r_PM_M,Nhat3_M)*Nhat3_M
+    eclipticPlane_r_PM_M_store.append(eclipticPlane_r_PM_M)
+    q_NM_tk_obj = q_MN_tk_obj.inverse()
+    q_NM_tk_obj.normalize()
+    r_PM_N_store.append(q_NM_tk_obj.rotate(eclipticPlane_r_PM_M))
+
+
 
 
 
@@ -164,6 +192,93 @@ prAxis = eulerVec/prAngle
 
 # error in the beginning quat wrt the end quat should be a positive rotation of omega*dt
 princAxisDotAngRateHat = np.dot(prAxis,totalAngleRad/np.linalg.norm(totalAngleRad))
+
+
+
+
+# lets plot MCMF vs MCI
+
+r_BM_M_store_array = np.array(r_BM_M_store)        
+drMdt_BM_M_store_array = np.array(drMdt_BM_M_store)
+
+# Unpack coordinates
+xM = r_BM_M_store_array[:, 0]
+yM = r_BM_M_store_array[:, 1]
+zM = r_BM_M_store_array[:, 2]
+
+# --- Plot Z vs Y ---
+plt.figure(figsize=(8, 6))
+plt.plot(xM, yM, linewidth=1.8, label='Spacecraft Trajectory (M-frame)',color='r')
+
+# Optional: plot Moon surface outline (for context)
+moon_radius = 1737.4e3  # meters
+theta = np.linspace(0, 2*np.pi, 200)
+plt.plot(moon_radius * np.cos(theta), moon_radius * np.sin(theta),
+         'k--', alpha=0.5, label='Moon Surface')
+
+plt.xlabel("X [m]")
+plt.ylabel("Y [m]")
+plt.title("Spacecraft Trajectory in MCMF (Z vs Y)")
+plt.axis("equal")
+plt.grid(True)
+plt.legend()
+
+
+
+# grab point p data
+r_PM_N_store_array = np.array(r_PM_N_store)
+eclipticPlane_r_PM_M_store_array = np.array(eclipticPlane_r_PM_M_store)
+
+
+plt.figure(figsize=(8,6))
+plt.plot(r_PM_N_store_array[:,0], r_PM_N_store_array[:,1],color="r", label="Point P coordinated in N")
+plt.plot(eclipticPlane_r_PM_M_store_array[:,0],eclipticPlane_r_PM_M_store_array[:,1],label="P in MCMF",marker='*',color="b")
+
+# Optional: plot Moon surface outline (for context)
+moon_radius = 1737.4e3  # meters
+theta = np.linspace(0, 2*np.pi, 200)
+plt.plot(moon_radius * np.cos(theta), moon_radius * np.sin(theta),
+         'k--', alpha=0.5, label='Moon Surface')
+
+plt.xlabel("X [m]")
+plt.ylabel("Y [m]")
+plt.title("Point P fixed in MCMF")
+plt.axis("equal")
+plt.grid(True)
+plt.legend()
+
+
+plt.figure(figsize=(8,6))
+plt.plot(r_PM_N_store_array[:,1], r_PM_N_store_array[:,2],color="r", label="Point P coordinated in N")
+plt.plot(eclipticPlane_r_PM_M_store_array[:,1],eclipticPlane_r_PM_M_store_array[:,2],label="P in MCMF",marker='*',color="b")
+
+# Optional: plot Moon surface outline (for context)
+moon_radius = 1737.4e3  # meters
+theta = np.linspace(0, 2*np.pi, 200)
+plt.plot(moon_radius * np.cos(theta), moon_radius * np.sin(theta),
+         'k--', alpha=0.5, label='Moon Surface')
+
+plt.xlabel("Y [m]")
+plt.ylabel("Z [m]")
+plt.title("Point P fixed in MCMF")
+plt.axis("equal")
+plt.grid(True)
+plt.legend()
+
+# vector norm should be preserved
+plt.figure(figsize=(8,6))
+plt.plot(timeData[1:],(np.linalg.norm(r_PM_N_store_array,axis=1)-np.linalg.norm(eclipticPlane_r_PM_M_store_array,axis=1)))
+plt.ylabel("magnitude [m]")
+plt.xlabel("Time [s]")
+plt.title("mag vector")
+plt.grid(True)
+plt.legend()
+
+
+
+
+plt.show()
+
 
 
 
