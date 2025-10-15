@@ -37,7 +37,7 @@ from Basilisk.utilities import (SimulationBaseClass, macros, orbitalMotion,
 
 # always import the Basilisk messaging support
 
-def run(showPlots, savePkl):
+def run(showPlots, savePkl, EarthAndMoonGrav):
    
     # Create simulation variable names
     simTaskName = "simTask"
@@ -75,9 +75,13 @@ def run(showPlots, savePkl):
      # Setup gravity factory and gravity bodies
     # Include bodies as a list of SPICE names
     gravFactory = simIncludeGravBody.gravBodyFactory()
-    # gravBodies = gravFactory.createBodies('earth')
-    # gravBodies['earth'].isCentralBody = True
-    gravBodies = gravFactory.createBodies('moon','earth')
+    gravBodies = None
+    if EarthAndMoonGrav:
+        gravBodies = gravFactory.createBodies('moon','earth')
+
+    else:
+        gravBodies = gravFactory.createBodies('moon')
+    
     gravBodies['moon'].isCentralBody = True
     moonBody = gravBodies.get('moon')
 
@@ -125,7 +129,7 @@ def run(showPlots, savePkl):
     # initial tip off
     ### SPACECRAFT
     scObject.hub.sigma_BNInit = rbk.PRV2MRP([macros.D2R*0.0, 0.0, macros.D2R*0.0]) # rbk.C2MRP(np.identity(3))  # sigma_BN_B
-    scObject.hub.omega_BN_BInit = [macros.D2R*0.0, macros.D2R*5.0, macros.D2R*0.0]  # rad/s - omega_BN_B
+    scObject.hub.omega_BN_BInit = [macros.D2R*0.0, macros.D2R*0.0, macros.D2R*0.0]  # rad/s - omega_BN_B
     
 
     # set the simulation time
@@ -160,10 +164,13 @@ def run(showPlots, savePkl):
     # Setup spacecraft data recorder
     scDataRec = scObject.scStateOutMsg.recorder(samplingTime)
     MoonDataRec = spiceObject.planetStateOutMsgs[0].recorder(samplingTime)
-    EarthDataRec = spiceObject.planetStateOutMsgs[1].recorder(samplingTime)
+    EarthDataRec = None
+    if EarthAndMoonGrav:
+        EarthDataRec = spiceObject.planetStateOutMsgs[1].recorder(samplingTime)
+        scSim.AddModelToTask(simTaskName, EarthDataRec)
+
     scSim.AddModelToTask(simTaskName, scDataRec)
     scSim.AddModelToTask(simTaskName, MoonDataRec)
-    scSim.AddModelToTask(simTaskName, EarthDataRec)
     # Set up messages for both IMU's
     imuDataRec = imu.sensorOutMsg.recorder(samplingTime)
     scSim.AddModelToTask(simTaskName, imuDataRec)
@@ -182,11 +189,16 @@ def run(showPlots, savePkl):
     timeData = scDataRec.times()
     moonPos = MoonDataRec.PositionVector
     moonVel = MoonDataRec.VelocityVector
-    earthPos = EarthDataRec.PositionVector
-    earthVel = EarthDataRec.VelocityVector
+
     gryoAngVel = imuDataRec.AngVelPlatform
     gyroTime = imuDataRec.times()
-    
+
+    earthPos = None
+    earthVel = None
+    if EarthAndMoonGrav:
+        earthPos = EarthDataRec.PositionVector
+        earthVel = EarthDataRec.VelocityVector
+
 
 
     posData[:] -= moonPos[:]
@@ -206,10 +218,19 @@ def run(showPlots, savePkl):
             "gryoAngVel": gryoAngVel,
             "timeGyro": gyroTime
         }
-        # Write to pickle file
-        with open("data/MoonCentralBody.pkl", "wb") as f:
-            pickle.dump(data_bundle, f)
-        print("Simulation data boxed up into data/MoonCentralBody.pkl")
+        if EarthAndMoonGrav:
+            # Write to pickle file
+            with open("data/MoonCentralBody_MoonEarthGrav.pkl", "wb") as f:
+                pickle.dump(data_bundle, f)
+            print("Simulation data boxed up into data/MoonCentralBody_MoonEarthGrav.pkl")
+        else:
+            # Write to pickle file
+            with open("data/MoonCentralBody_MoonGrav.pkl", "wb") as f:
+                pickle.dump(data_bundle, f)
+            print("Simulation data boxed up into data/MoonCentralBody_MoonGrav.pkl")
+            
+
+        
 
     
 
@@ -293,5 +314,6 @@ def run(showPlots, savePkl):
 if __name__ == "__main__":
     run(
         True,        # show_plots
-        False,      # save pkl file
+        True,      # save pkl file
+        False, # EarthAndMoonGrav
     )

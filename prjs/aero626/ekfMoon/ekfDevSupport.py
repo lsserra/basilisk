@@ -127,7 +127,6 @@ for i, tk in enumerate(timeData):
 
     tkm = timeData[i-1]
     ### MCMF TRUTH GENERATION ###
-
     # --- attitude --- #
     sol = solve_ivp(
         fun=dqdt_wrapper,
@@ -158,8 +157,8 @@ for i, tk in enumerate(timeData):
     r_BM_M_store.append(r_BM_M)
 
     # --- velocity --- #
-    rdot_BM_N = sc_vel[i,:]
-    drMdt_BM_M = rdot_BM_N - (np.cross(w_MN_M, r_BM_M))
+    rdot_BM_M = q_MN_tk_obj.rotate(sc_vel[i,:])
+    drMdt_BM_M = rdot_BM_M - (np.cross(w_MN_M, r_BM_M))
     drMdt_BM_M_store.append(drMdt_BM_M)
 
     ## foo position vector of point p
