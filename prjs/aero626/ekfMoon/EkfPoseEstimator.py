@@ -22,14 +22,14 @@ from helpers.attitude.Quaternion import Quaternion
 ############################################
 def McmfPoseDynamics(t,x):
 
-    MU_MOON = 4902.799 * 1e9 # m^3/s^3
+    MU_MOON = 4902.799 # km^3/s^3
     w_MN_M = np.array([0.0, 0.0, 2*np.pi/27.322/24/3600])
 
     r_BM_M = x[:3]
     Mdrdt_BM_M = x[3:]
     r_BM_M_norm = np.linalg.norm(r_BM_M)
 
-    fgrav = MU_MOON*r_BM_M/r_BM_M_norm**3
+    fgrav = -MU_MOON*r_BM_M/r_BM_M_norm**3
     coriolis = 2* np.cross(w_MN_M,Mdrdt_BM_M)
     centripital = np.cross(w_MN_M, np.cross(w_MN_M, r_BM_M))
     dr2dt2_BM_M_M = fgrav - coriolis - centripital
@@ -101,7 +101,7 @@ class EkfPoseEstimator():
             [-wy, wx, 0]
         ])
         # Moon gravitational const
-        self.MU_MOON = 4902.799 * 1e9 # m^3/s^3
+        self.MU_MOON = 4902.799 # km^3/s^3
 
 
         self.H = np.hstack( (np.identity(3),np.zeros((3,3))) )
@@ -140,7 +140,7 @@ class EkfPoseEstimator():
             self.xRef_tk_.r_BM_M,
             self.xRef_tk_.Mdrdt_BM_M
             ])
-        xk_.flatten()
+        xk_ = xk_.flatten()
         
 
         # numerically integrate
@@ -158,7 +158,7 @@ class EkfPoseEstimator():
         # write to tk ref solution 
         self.xRef_tk.t = tk
         self.xRef_tk.r_BM_M = xk[:3]
-        self.xRef_tk.Mdrdt_BM_M = xk[:3]
+        self.xRef_tk.Mdrdt_BM_M = xk[3:]
 
     def propagateErrorCov(self,Fxk,toTime):
 
@@ -199,7 +199,7 @@ class EkfPoseEstimator():
         # gravitational partial wrt position
         rnorm = np.linalg.norm(r)
         I3 = np.eye(3)
-        F21_ = self.MU_MOON * (I3 / rnorm**3 - 3 * np.outer(r, r) / rnorm**5)
+        F21_ = -self.MU_MOON * (I3 / rnorm**3 - 3 * np.outer(r, r) / rnorm**5)
 
         # rdot partial wrt r
         F21 = np.zeros((3,3))

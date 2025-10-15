@@ -1,8 +1,10 @@
 import os, sys
 import numpy as np
+
 import copy
 import matplotlib.pyplot as plt
 from scipy.integrate import solve_ivp
+from scipy.interpolate import interp1d
 
 import pickle
 
@@ -42,12 +44,12 @@ with open("data/MoonCentralBody_MoonGrav.pkl", "rb") as f:
     sim_data = pickle.load(f)
 
 timeData = sim_data["time"] * 1e-9 # to seconds
-sc_pos   = sim_data["sc_pos"]
-sc_vel   = sim_data["sc_vel"]
-moon_pos = sim_data["moon_pos"]
-moon_vel = sim_data["moon_vel"]
-earth_pos = sim_data["earth_pos"]
-earth_vel = sim_data["earth_vel"]
+sc_pos   = sim_data["sc_pos"] / 1000 # to km
+sc_vel   = sim_data["sc_vel"] / 1000
+moon_pos = sim_data["moon_pos"] / 1000
+moon_vel = sim_data["moon_vel"] / 1000
+# earth_pos = sim_data["earth_pos"] / 1000
+# earth_vel = sim_data["earth_vel"] / 1000
 
 print("Simulation data successfully unboxed.")
 
@@ -147,6 +149,8 @@ ekf.initialize(mx_prior_tk_= errState0,
 for i, tk in enumerate(timeData):
     if i == 0:
         q_MN_store.append(q_MN_0)
+        r_BM_M_TruthStore.append(sc_pos[0,:])
+        Mdrdt_BM_M_M_TruthStore.append(sc_vel[0,:])
         continue
 
     tkm = timeData[i-1]
@@ -229,9 +233,16 @@ v_filt = np.array([xref.Mdrdt_BM_M for xref in referenceStateList])
 r_truth = np.array(r_BM_M_TruthStore)
 v_truth = np.array(Mdrdt_BM_M_M_TruthStore)
 
+r_interp_truth = interp1d(timeData, r_truth, axis=0, fill_value="extrapolate")
+r_true_interp = r_interp_truth(t_filt)
+
+v_interp_truth = interp1d(timeData, v_truth, axis=0, fill_value="extrapolate")
+v_true_interp = v_interp_truth(t_filt)
+
+
 # Compute estimation error
-positionError = r_truth - r_filt
-velocityError = v_truth - v_filt
+positionError = r_true_interp - r_filt
+velocityError = v_true_interp - v_filt
 nSolutions = len(r_filt)
 
 ############################################
@@ -246,20 +257,20 @@ for i in range(3):
     axs[i, 0].plot(t_filt, positionError[:, i], 'k-', linewidth=1.8, label=f'{pos_labels[i]}')
     axs[i, 0].plot(t_filt, sigma3[:, i], 'r--', linewidth=1)
     axs[i, 0].plot(t_filt, -sigma3[:, i], 'r--', linewidth=1)
-    axs[i, 0].set_ylabel(f'{pos_labels[i]} [m]')
+    axs[i, 0].set_ylabel(f'{pos_labels[i]} [km]')
     axs[i, 0].grid(True)
     axs[i, 0].legend(loc='upper right')
-    axs[i,0].title("r_BM_M Estimation Error")
+    axs[i,0].set_title("r_BM_M Estimation Error")
 
 # Velocity error plots
 for i in range(3):
     axs[i, 1].plot(t_filt, velocityError[:,i], 'k-', linewidth=1.8, label=f'{vel_labels[i]}')
     axs[i, 1].plot(t_filt, sigma3[:, 3 + i], 'r--', linewidth=1)
     axs[i, 1].plot(t_filt, -sigma3[:, 3 + i], 'r--', linewidth=1)
-    axs[i, 1].set_ylabel(f'{vel_labels[i]} [m/s]')
+    axs[i, 1].set_ylabel(f'{vel_labels[i]} [km/s]')
     axs[i, 1].grid(True)
     axs[i, 1].legend(loc='upper right')
-    axs[i,0].title("Md(r_BM_M)/dt Estimation Error")
+    axs[i,1].set_title("Md(r_BM_M)/dt Estimation Error")
 
 axs[-1, 0].set_xlabel('Time [s]')
 axs[-1, 1].set_xlabel('Time [s]')
