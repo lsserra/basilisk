@@ -2,6 +2,7 @@ import sys, os
 
 import numpy as np
 from numpy import linalg
+import copy
 from scipy.integrate import solve_ivp
 from scipy.linalg import block_diag
 
@@ -25,15 +26,15 @@ def McmfPoseDynamics(t,x):
     w_MN_M = np.array([0.0, 0.0, 2*np.pi/27.322/24/3600])
 
     r_BM_M = x[:3]
-    drdt_BM_M_M = x[3:]
+    Mdrdt_BM_M = x[3:]
     r_BM_M_norm = np.linalg.norm(r_BM_M)
 
-    fgrav = MU_MOON*drdt_BM_M_M/r_BM_M_norm**3
-    coriolis = 2* np.cross(w_MN_M,drdt_BM_M_M)
+    fgrav = MU_MOON*r_BM_M/r_BM_M_norm**3
+    coriolis = 2* np.cross(w_MN_M,Mdrdt_BM_M)
     centripital = np.cross(w_MN_M, np.cross(w_MN_M, r_BM_M))
     dr2dt2_BM_M_M = fgrav - coriolis - centripital
     
-    xdot = np.hstack([drdt_BM_M_M,dr2dt2_BM_M_M])
+    xdot = np.hstack([Mdrdt_BM_M,dr2dt2_BM_M_M])
 
     return xdot
 
@@ -61,14 +62,10 @@ class EkfErrorState():
 
 class EkfReferenceState():
     def __init__(self):
-        self.r_BM_M = np.zeros(3,1)
-        self.drdt_BM_M_M = np.zeros(3,1)
+        self.r_BM_M = np.zeros((3,1))
+        self.Mdrdt_BM_M = np.zeros((3,1))
         self.q_BM = Quaternion.identity()
         self.t = 0
-    # def update(self,x,P,t):
-    #     self.mx = x
-    #     self.Pxx = P
-    #     self.t = t
 
 
 
@@ -122,9 +119,10 @@ class EkfPoseEstimator():
         self.implChi2 = False
 
         # --- Logging containers ---
-        self.state_log = []       # stores (t, state)
+        self.errorState_log = []
+        self.refState_log = []
         self.innovation_log = []  # stores (t, innovation)
-        self.cov_log = []
+        
         self.outlier_log = []
 
 
@@ -140,7 +138,7 @@ class EkfPoseEstimator():
         tk_ = self.xRef_tk_.t
         xk_ = np.hstack([
             self.xRef_tk_.r_BM_M,
-            self.xRef_tk_.drdt_BM_M_M
+            self.xRef_tk_.Mdrdt_BM_M
             ])
         xk_.flatten()
         
@@ -149,7 +147,7 @@ class EkfPoseEstimator():
         sol = solve_ivp(
             t_span=[tk_,tk],
             y0=xk_,
-            fun=lambda t, x: McmfPoseDynamics(),
+            fun=lambda t, x: McmfPoseDynamics(t,x),
             method='RK45',
             rtol=1e-9,
             atol=1e-9
@@ -160,7 +158,7 @@ class EkfPoseEstimator():
         # write to tk ref solution 
         self.xRef_tk.t = tk
         self.xRef_tk.r_BM_M = xk[:3]
-        self.xRef_tk.drdt_BM_M_M = xk[:3]
+        self.xRef_tk.Mdrdt_BM_M = xk[:3]
 
     def propagateErrorCov(self,Fxk,toTime):
 
@@ -191,7 +189,7 @@ class EkfPoseEstimator():
 
         # grab reference state
         r = self.xRef_tk.r_BM_M
-        rdot = self.xRef_tk.drdt_BM_M_M
+        rdot = self.xRef_tk.Mdrdt_BM_M
         rnormSquared = np.linalg.norm(r)**2
 
         F11 = np.zeros((3,3))
@@ -201,7 +199,7 @@ class EkfPoseEstimator():
         # gravitational partial wrt position
         rnorm = np.linalg.norm(r)
         I3 = np.eye(3)
-        F21_ = -self.MU_MOON * (I3 / rnorm**3 - 3 * np.outer(r, r) / rnorm**5)
+        F21_ = self.MU_MOON * (I3 / rnorm**3 - 3 * np.outer(r, r) / rnorm**5)
 
         # rdot partial wrt r
         F21 = np.zeros((3,3))
@@ -211,15 +209,32 @@ class EkfPoseEstimator():
                     self.MU_MOON*( rdot[i]* rnormSquared**(-3/2) +
                         r[i] * (-3*rnormSquared**(-5/2))* rdot[j] * r[j]
                     ))
-        F = np.block([F11,F12],
-                     [F21,F22]) 
+        F = np.block([[F11,F12],
+                     [F21_,F22]]) 
         return F        
 
     def propagate(self,toTime):
-                
+        ''' 
+            tk = toTime
+
+            This function expects: 
+                self.mx_prior_tk_ and self.xref_tk_
+            to be set outside of this function           
+            
+            This function will set:
+                self.xref_tk and self.mx_prior_tk 
+        '''
+        
+        # set time 
+        tk = toTime
+        
+        # log error state and reference state before propagation
+        self.errorState_log.append(copy.deepcopy(self.mx_prior_tk_))
+        self.refState_log.append(copy.deepcopy(self.xRef_tk_))
+
         # Propagation reference state
             # inside this function we set xref_tk_ -> xref_tk
-        self.propagateReferenceState(toTime=toTime)
+        self.propagateReferenceState(toTime=tk)
 
         # get jacobian by linearizing about reference
             # inside this function we linearize about xref_tk
@@ -227,13 +242,17 @@ class EkfPoseEstimator():
 
         # numerically integrate error covariance
             # inside this function we set mx_prior_tk_ -> mx_prior_tk
-        self.propagateErrorCov(Fxk=Fxk)
+        self.propagateErrorCov(Fxk=Fxk,toTime=tk)
 
-        # Store predicted state
+        # log error state and reference state after propagation
+        self.errorState_log.append(copy.deepcopy(self.mx_prior_tk))
+        self.refState_log.append(copy.deepcopy(self.xRef_tk))
 
 
 
     def update(self, z_meas, measTime):
+        foo =1
+        '''
         mxm = self.mxSol_mtk.mx
         Pxxm = self.mxSol_mtk.Pxx
 
@@ -292,9 +311,7 @@ class EkfPoseEstimator():
         self._log_state(mx_upd, Pxx_upd, measTime)
         self._log_innovation(inn, measTime)
         self._log_outlier(measTime, rejected)
-
-
-
+        '''
 
 
      # ---------------------------------------------------------

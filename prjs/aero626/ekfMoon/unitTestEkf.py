@@ -1,5 +1,7 @@
 import os, sys
 import numpy as np
+import copy
+import matplotlib.pyplot as plt
 from scipy.integrate import solve_ivp
 
 import pickle
@@ -83,10 +85,9 @@ def dqdt_wrapper(t, q):
 
 # lets set up a for loop over sim time
 
-r_BM_M_store = []
-Mdrdt_BM_M_M_store = [] # time derivative of position B wrt M, as seen from M, coordinatized in M
+r_BM_M_TruthStore = []
+Mdrdt_BM_M_M_TruthStore = [] # time derivative of position B wrt M, as seen from M, coordinatized in M
 q_MN_store = []
-
 q_MN_tkm =q_MN_0.as_array()
 
 
@@ -120,7 +121,7 @@ sigma_r = 0.1 # m
 sigma_Mdrdt = 0.01 # m/s
 
 ## error state
-errState0 = EkfErrorState()
+errState0 = EkfErrorState(nx=nx)
 errState0.mx = np.zeros((nx,1))
 Pxx0 = np.diag([sigma_r,sigma_r,sigma_r,sigma_Mdrdt,sigma_Mdrdt,sigma_Mdrdt])
 Pxx0 = Pxx0 @ Pxx0.T
@@ -139,8 +140,8 @@ xRef0.Mdrdt_BM_M = Mdrdt_BM_M0
 xRef0.t = t0
 
 # pass to ekf obj
-ekf.initialize(EkfErrorState = errState0,
-               EkfReferenceState = xRef0)
+ekf.initialize(mx_prior_tk_= errState0,
+               xRef_tk_ = xRef0)
 
 
 for i, tk in enumerate(timeData):
@@ -177,12 +178,13 @@ for i, tk in enumerate(timeData):
     # --- position --- #
     r_BM_N = sc_pos[i,:]
     r_BM_M = q_MN_tk_obj.rotate(r_BM_N)
-    r_BM_M_store.append(r_BM_M)
+    r_BM_M_TruthStore.append(r_BM_M)
 
     # --- velocity --- #
     rdot_BM_M = q_MN_tk_obj.rotate(sc_vel[i,:])
     Mdrdt_BM_M = rdot_BM_M - (np.cross(w_MN_M, r_BM_M))
-    Mdrdt_BM_M_M_store.append(Mdrdt_BM_M)
+    Mdrdt_BM_M_M_TruthStore.append(Mdrdt_BM_M)
+
 
     ## foo position vector of point p
     Nhat3 = np.array([0., 0., 1.])
@@ -193,4 +195,78 @@ for i, tk in enumerate(timeData):
     q_NM_tk_obj = q_MN_tk_obj.inverse()
     q_NM_tk_obj.normalize()
     r_PM_N_store.append(q_NM_tk_obj.rotate(eclipticPlane_r_PM_M))
+
+
+    ### EKF Progpagation ###
+    ekf.propagate(toTime=tk)
+
+    # manually get ready for next time
+    ekf.xRef_tk_ = ekf.xRef_tk
+    ekf.mx_prior_tk_ = ekf.mx_prior_tk
+
+
+
+
+
+
+# grab ekf error state and reference state and make plots
+errorStateList = copy.deepcopy(ekf.errorState_log)
+referenceStateList = copy.deepcopy(ekf.refState_log)
+
+
+
+# Extract times and covariance diagonals
+t_filt = np.array([s.t for s in errorStateList])
+Pxx_list = [s.Pxx for s in errorStateList]
+P_diag = np.array([np.diag(P) for P in Pxx_list])
+sigma3 = 3 * np.sqrt(P_diag)
+
+# Extract reference state
+r_filt = np.array([xref.r_BM_M for xref in referenceStateList])
+v_filt = np.array([xref.Mdrdt_BM_M for xref in referenceStateList])
+
+# Extract true state
+r_truth = np.array(r_BM_M_TruthStore)
+v_truth = np.array(Mdrdt_BM_M_M_TruthStore)
+
+# Compute estimation error
+positionError = r_truth - r_filt
+velocityError = v_truth - v_filt
+nSolutions = len(r_filt)
+
+############################################
+# Plot position and velocity estimation errors
+############################################
+fig, axs = plt.subplots(3, 2, figsize=(11, 8), sharex=True)
+pos_labels = ['X', 'Y', 'Z']
+vel_labels = ['X', 'Y', 'Z']
+
+# Position error plots
+for i in range(3):
+    axs[i, 0].plot(t_filt, positionError[:, i], 'k-', linewidth=1.8, label=f'{pos_labels[i]}')
+    axs[i, 0].plot(t_filt, sigma3[:, i], 'r--', linewidth=1)
+    axs[i, 0].plot(t_filt, -sigma3[:, i], 'r--', linewidth=1)
+    axs[i, 0].set_ylabel(f'{pos_labels[i]} [m]')
+    axs[i, 0].grid(True)
+    axs[i, 0].legend(loc='upper right')
+    axs[i,0].title("r_BM_M Estimation Error")
+
+# Velocity error plots
+for i in range(3):
+    axs[i, 1].plot(t_filt, velocityError[:,i], 'k-', linewidth=1.8, label=f'{vel_labels[i]}')
+    axs[i, 1].plot(t_filt, sigma3[:, 3 + i], 'r--', linewidth=1)
+    axs[i, 1].plot(t_filt, -sigma3[:, 3 + i], 'r--', linewidth=1)
+    axs[i, 1].set_ylabel(f'{vel_labels[i]} [m/s]')
+    axs[i, 1].grid(True)
+    axs[i, 1].legend(loc='upper right')
+    axs[i,0].title("Md(r_BM_M)/dt Estimation Error")
+
+axs[-1, 0].set_xlabel('Time [s]')
+axs[-1, 1].set_xlabel('Time [s]')
+fig.suptitle(f"MCMF r_BM_M & Md(.)dt Estimation Errors ±3σ\n{nSolutions} EKF Steps", fontsize=14)
+
+plt.tight_layout(rect=[0, 0, 1, 0.95])
+plt.show()
+
+
 

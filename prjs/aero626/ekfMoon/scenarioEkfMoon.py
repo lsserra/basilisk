@@ -135,7 +135,7 @@ def run(showPlots, savePkl, EarthAndMoonGrav):
     # set the simulation time
     n = np.sqrt(moonBody.mu / oe.a / oe.a / oe.a)
     P = 2. * np.pi / n
-    simulationTime = macros.sec2nano(5.75*P)
+    simulationTime = macros.sec2nano(.75*P)
     # Setup data logging
     numDataPoints = 1000
     samplingTime = unitTestSupport.samplingTime(simulationTime, simulationTimeStep, numDataPoints)
