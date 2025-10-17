@@ -20,6 +20,58 @@ from helpers.attitude.Quaternion import Quaternion
 #       Dynamics functions to be
 #           called by solve_ivp
 ############################################
+
+def EkfCoupledMeanAndCovProp(t, x_aug, MU_MOON, w_MN_M, Fw, Qww, nx):
+    """
+    Coupled propagation of mean and covariance for EKF in MCMF frame.
+    x_aug = [x, P_flat] 
+    where x = [r, rdot]
+
+    Fw is the determinstic process noise mapping matrix and is not a function of the mean state
+    Qww is the process noise PSD
+    """
+
+    # --- Unpack state ---
+    x = x_aug[:nx]
+    P_flat = x_aug[nx:]
+    P = P_flat.reshape((nx, nx))
+
+    # --- Unpack mean state ---
+    r = x[:3]
+    rdot = x[3:]
+    rnorm = np.linalg.norm(r)
+
+    # --- Mean dynamics ---
+    fgrav = -MU_MOON * r / rnorm**3
+    coriolis = 2 * np.cross(w_MN_M, rdot)
+    centripetal = np.cross(w_MN_M, np.cross(w_MN_M, r))
+    dr2dt2 = fgrav - coriolis - centripetal
+
+    xdot = np.hstack([rdot, dr2dt2])
+
+    # --- Compute dynamics Jacobian Fx ---
+    I3 = np.eye(3)
+    w_skew = np.array([
+        [0, -w_MN_M[2], w_MN_M[1]],
+        [w_MN_M[2], 0, -w_MN_M[0]],
+        [-w_MN_M[1], w_MN_M[0], 0]
+    ])
+    F11 = np.zeros((3, 3))
+    F12 = np.eye(3)
+    F22 = -2 * w_skew
+    F21 = -MU_MOON * (I3 / rnorm**3 - 3 * np.outer(r, r) / rnorm**5)
+    Fx = np.block([[F11, F12],
+                   [F21, F22]])
+
+    # --- Covariance dynamics ---
+    Pdot = Fx @ P + P @ Fx.T + Fw @ Qww @ Fw.T
+
+    # --- Stack mean and covariance derivatives ---
+    x_aug_dot = np.hstack([xdot, Pdot.flatten()])
+
+    return x_aug_dot
+
+
 def McmfPoseDynamics(t,x):
 
     MU_MOON = 4902.799 # km^3/s^3
@@ -232,17 +284,51 @@ class EkfPoseEstimator():
         self.errorState_log.append(copy.deepcopy(self.mx_prior_tk_))
         self.refState_log.append(copy.deepcopy(self.xRef_tk_))
 
-        # Propagation reference state
-            # inside this function we set xref_tk_ -> xref_tk
-        self.propagateReferenceState(toTime=tk)
+        # grab prior error covariance, reference state, and time
+        tkm = self.mx_prior_tk_.t
+        Pxx_prior_tk_ = self.mx_prior_tk_.Pxx
+        xRef_tk_ = np.hstack([
+            self.xRef_tk_.r_BM_M,
+            self.xRef_tk_.Mdrdt_BM_M
+            ]).flatten()
 
-        # get jacobian by linearizing about reference
-            # inside this function we linearize about xref_tk
-        Fxk = self.computeDynamicsJacobian()
+        x_aug0 = np.hstack([
+        xRef_tk_,                
+        Pxx_prior_tk_.flatten()  
+        ])
 
-        # numerically integrate error covariance
-            # inside this function we set mx_prior_tk_ -> mx_prior_tk
-        self.propagateErrorCov(Fxk=Fxk,toTime=tk)
+        # propagate the coupled mean and covariance dynamics
+        sol = solve_ivp(
+        fun=lambda t, x_aug: EkfCoupledMeanAndCovProp(
+            t,
+            x_aug, 
+            self.MU_MOON, 
+            self.w_MN_M, 
+            self.Fw, 
+            self.Qww, 
+            self.nx
+            ),
+        t_span=[tkm, tk],
+        y0=x_aug0,
+        method='RK45',
+        rtol=1e-9,
+        atol=1e-9
+        )
+
+        # reconstruct reference state and error covariance
+        x_aug_sol = sol.y 
+        x_sol_tk = x_aug_sol[:self.nx, -1]
+        Pxx_sol_tk = x_aug_sol[self.nx:, -1].reshape(self.nx,self.nx)
+
+        # update reference state obj
+        self.xRef_tk.r_BM_M = x_sol_tk[:3]
+        self.xRef_tk.Mdrdt_BM_M = x_sol_tk[3:]
+        self.xRef_tk.t = tk
+
+        # update error state obj
+        self.mx_prior_tk.Pxx = Pxx_sol_tk
+        self.mx_prior_tk.t = tk
+
 
         # log error state and reference state after propagation
         self.errorState_log.append(copy.deepcopy(self.mx_prior_tk))

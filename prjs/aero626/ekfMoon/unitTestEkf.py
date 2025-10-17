@@ -149,8 +149,13 @@ ekf.initialize(mx_prior_tk_= errState0,
 for i, tk in enumerate(timeData):
     if i == 0:
         q_MN_store.append(q_MN_0)
-        r_BM_M_TruthStore.append(sc_pos[0,:])
-        Mdrdt_BM_M_M_TruthStore.append(sc_vel[0,:])
+        # initial r_BM_M and Mdrdt_BM_M
+        r_BM_M0 = q_MN_0.rotate(sc_pos[0,:])
+        rdot_BM_M = q_MN_0.rotate(sc_vel[0,:])
+        Mdrdt_BM_M0 = rdot_BM_M - (np.cross(w_MN_M, r_BM_M0))
+        
+        r_BM_M_TruthStore.append(r_BM_M0)
+        Mdrdt_BM_M_M_TruthStore.append(Mdrdt_BM_M0)
         continue
 
     tkm = timeData[i-1]
@@ -233,10 +238,10 @@ v_filt = np.array([xref.Mdrdt_BM_M for xref in referenceStateList])
 r_truth = np.array(r_BM_M_TruthStore)
 v_truth = np.array(Mdrdt_BM_M_M_TruthStore)
 
-r_interp_truth = interp1d(timeData, r_truth, axis=0, fill_value="extrapolate")
+r_interp_truth = interp1d(timeData, r_truth, axis=0, kind="previous")
 r_true_interp = r_interp_truth(t_filt)
 
-v_interp_truth = interp1d(timeData, v_truth, axis=0, fill_value="extrapolate")
+v_interp_truth = interp1d(timeData, v_truth, axis=0, kind="previous")
 v_true_interp = v_interp_truth(t_filt)
 
 
@@ -244,6 +249,9 @@ v_true_interp = v_interp_truth(t_filt)
 positionError = r_true_interp - r_filt
 velocityError = v_true_interp - v_filt
 nSolutions = len(r_filt)
+
+print(f"Final r Error = {positionError[-1,:]} [km/s]")
+print(f"Final v Error = {velocityError[-1,:]} [km/s]")
 
 ############################################
 # Plot position and velocity estimation errors
