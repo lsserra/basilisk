@@ -20,7 +20,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.
 
 
 
-'''
+
 with open("data/MoonCentralBody_MoonGrav.pkl", "rb") as f:
     sim_data = pickle.load(f)
 
@@ -33,17 +33,7 @@ moon_vel = sim_data["moon_vel"] / 1000
 # earth_vel = sim_data["earth_vel"] / 1000
 
 print("Simulation data successfully unboxed.")
-'''
 
-
-with open("data/separateInertialSolution.pkl", "rb") as f:
-    sim_data = pickle.load(f)
-
-    timeData = sim_data["time"]  # to seconds
-    sc_pos   = sim_data["r_BN_N"].T # to km
-    sc_vel   = sim_data["rdot_BN_N"].T 
-
-print("Simulation data successfully unboxed.")
 
 
 # DCM definition of MCMF frame
@@ -63,7 +53,6 @@ angle_deg = np.rad2deg(np.arccos(cosang))
 
 
 q_MN_0 = Quaternion.from_DCM(T_MN)
-q_MN_0 = Quaternion.from_DCM(np.eye(3))
 q_MN_0.ensureScalarPos()
 q_MN_0.normalize()
 
@@ -223,9 +212,6 @@ sigma3 = 3 * np.sqrt(P_diag)
 r_filt = np.array([xref.r_BM_M for xref in referenceStateList])
 v_filt = np.array([xref.Mdrdt_BM_M for xref in referenceStateList])
 
-plt.figure()
-plt.plot(r_filt[:,0],r_filt[:,1])
-
 # Extract true state
 r_truth = np.array(r_BM_M_TruthStore)
 v_truth = np.array(Mdrdt_BM_M_M_TruthStore)
@@ -256,7 +242,7 @@ vel_labels = ['X', 'Y', 'Z']
 for i in range(3):
     axs[i, 0].plot(t_filt, positionError[:, i], 'k-', linewidth=1.8, label=f'{pos_labels[i]}')
     axs[i, 0].plot(t_filt, sigma3[:, i], 'r--', linewidth=1)
-    axs[i, 0].plot(t_filt, -sigma3[:, i], 'r--', linewidth=1)
+    axs[i, 0].plot(t_filt, -sigma3[:, i], 'r--', linewidth=1, label='±3σ confidence')
     axs[i, 0].set_ylabel(f'{pos_labels[i]} [km]')
     axs[i, 0].grid(True)
     axs[i, 0].legend(loc='upper right')
@@ -266,7 +252,7 @@ for i in range(3):
 for i in range(3):
     axs[i, 1].plot(t_filt, velocityError[:,i], 'k-', linewidth=1.8, label=f'{vel_labels[i]}')
     axs[i, 1].plot(t_filt, sigma3[:, 3 + i], 'r--', linewidth=1)
-    axs[i, 1].plot(t_filt, -sigma3[:, 3 + i], 'r--', linewidth=1)
+    axs[i, 1].plot(t_filt, -sigma3[:, 3 + i], 'r--', linewidth=1,label='±3σ confidence')
     axs[i, 1].set_ylabel(f'{vel_labels[i]} [km/s]')
     axs[i, 1].grid(True)
     axs[i, 1].legend(loc='upper right')
