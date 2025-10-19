@@ -86,11 +86,11 @@ class Quaternion:
     # --- Rotation of Vectors ---
 
     def rotate(self, v):
-        """Rotate a 3-vector v using this quaternion (passive rotation) q x v x q^-1."""
+        """Rotate a 3-vector v using this quaternion (passive rotation) q^-1 x v x q."""
         v = np.array(v, dtype=float)
         q_inv = self.inverse()
         v_pure = Quaternion(v, 0.0)
-        rot_pure = self * v_pure * q_inv
+        rot_pure = q_inv * v_pure * self 
         return rot_pure.vector()
     
 

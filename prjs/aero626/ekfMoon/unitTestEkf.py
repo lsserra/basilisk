@@ -19,6 +19,8 @@ from faciliateSimulation import generateLandmarks, propagateMCMF
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
 
 
+
+'''
 with open("data/MoonCentralBody_MoonGrav.pkl", "rb") as f:
     sim_data = pickle.load(f)
 
@@ -31,7 +33,17 @@ moon_vel = sim_data["moon_vel"] / 1000
 # earth_vel = sim_data["earth_vel"] / 1000
 
 print("Simulation data successfully unboxed.")
+'''
 
+
+with open("data/separateInertialSolution.pkl", "rb") as f:
+    sim_data = pickle.load(f)
+
+    timeData = sim_data["time"]  # to seconds
+    sc_pos   = sim_data["r_BN_N"].T # to km
+    sc_vel   = sim_data["rdot_BN_N"].T 
+
+print("Simulation data successfully unboxed.")
 
 
 # DCM definition of MCMF frame
@@ -51,6 +63,7 @@ angle_deg = np.rad2deg(np.arccos(cosang))
 
 
 q_MN_0 = Quaternion.from_DCM(T_MN)
+q_MN_0 = Quaternion.from_DCM(np.eye(3))
 q_MN_0.ensureScalarPos()
 q_MN_0.normalize()
 
@@ -181,6 +194,15 @@ for i, tk in enumerate(timeData):
     ekf.mx_prior_tk_ = ekf.mx_prior_tk
 
 
+    ## running error check
+
+    r_error = r_BM_M - ekf.xRef_tk.r_BM_M
+    v_error = Mdrdt_BM_M - ekf.xRef_tk.Mdrdt_BM_M
+    angleDiff = Quaternion.computeEulerVecAttErrorFromQuats(q_ref=q_MN_store[i-1],q_est=q_MN_store[i])
+
+    foo=1
+
+
 
 
 
@@ -201,14 +223,17 @@ sigma3 = 3 * np.sqrt(P_diag)
 r_filt = np.array([xref.r_BM_M for xref in referenceStateList])
 v_filt = np.array([xref.Mdrdt_BM_M for xref in referenceStateList])
 
+plt.figure()
+plt.plot(r_filt[:,0],r_filt[:,1])
+
 # Extract true state
 r_truth = np.array(r_BM_M_TruthStore)
 v_truth = np.array(Mdrdt_BM_M_M_TruthStore)
 
-r_interp_truth = interp1d(timeData, r_truth, axis=0, kind="previous")
+r_interp_truth = interp1d(timeData, r_truth, axis=0)
 r_true_interp = r_interp_truth(t_filt)
 
-v_interp_truth = interp1d(timeData, v_truth, axis=0, kind="previous")
+v_interp_truth = interp1d(timeData, v_truth, axis=0)
 v_true_interp = v_interp_truth(t_filt)
 
 

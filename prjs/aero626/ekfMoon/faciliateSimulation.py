@@ -111,61 +111,62 @@ def propagateMCMF(tkm,tk,q_MN_tkm):
 
 
 
+if __name__ == "__main__":
 
-# --- Example setup ---
-mu_moon = 4902.800066  # [km^3/s^2]
-bodyRadius_km = 1737.4
+    # --- Example setup ---
+    mu_moon = 4902.800066  # [km^3/s^2]
+    bodyRadius_km = 1737.4
 
-# simple circular orbit
-r_mag = bodyRadius_km + 100.0  # 100 km altitude
-v_mag = np.sqrt(mu_moon / r_mag)
+    # simple circular orbit
+    r_mag = bodyRadius_km + 100.0  # 100 km altitude
+    v_mag = np.sqrt(mu_moon / r_mag)
 
-# generate a simple trajectory (e.g., 1 orbit)
-n_points = 200
-theta = np.linspace(0, 2*np.pi, n_points)
-rN_km = np.column_stack((r_mag*np.cos(theta), r_mag*np.sin(theta), np.zeros_like(theta)))
-vN_kms = np.column_stack((-v_mag*np.sin(theta), v_mag*np.cos(theta), np.zeros_like(theta)))
-
-
-
-rN_km0 = rN_km[0,:]
-vN_km0 = vN_kms[0,:]
-# generate landmarks
-landmarks_N_km = generateLandmarks(
-    rN_km0,
-    vN_km0,
-    mu_moon,
-    bodyRadius_km,
-    landmarksDensity=0.005,
-    corridorWidth_km=50.0,
-    randomSeed=42
-)
+    # generate a simple trajectory (e.g., 1 orbit)
+    n_points = 200
+    theta = np.linspace(0, 2*np.pi, n_points)
+    rN_km = np.column_stack((r_mag*np.cos(theta), r_mag*np.sin(theta), np.zeros_like(theta)))
+    vN_kms = np.column_stack((-v_mag*np.sin(theta), v_mag*np.cos(theta), np.zeros_like(theta)))
 
 
-landmarks_N_km = np.array(landmarks_N_km)
-# --- Plot ---
-fig = plt.figure(figsize=(8, 8))
-ax = fig.add_subplot(111, projection='3d')
 
-# body (sphere)
-u, v = np.mgrid[0:2*np.pi:50j, 0:np.pi:25j]
-x = bodyRadius_km * np.cos(u) * np.sin(v)
-y = bodyRadius_km * np.sin(u) * np.sin(v)
-z = bodyRadius_km * np.cos(v)
-ax.plot_surface(x, y, z, color='lightgray', alpha=0.5)
+    rN_km0 = rN_km[0,:]
+    vN_km0 = vN_kms[0,:]
+    # generate landmarks
+    landmarks_N_km = generateLandmarks(
+        rN_km0,
+        vN_km0,
+        mu_moon,
+        bodyRadius_km,
+        landmarksDensity=0.005,
+        corridorWidth_km=50.0,
+        randomSeed=42
+    )
 
-# trajectory
-ax.plot(rN_km[:,0], rN_km[:,1], rN_km[:,2], 'b', label='Trajectory')
 
-# landmarks
-if len(landmarks_N_km) > 0:
-    ax.scatter(landmarks_N_km[:,0], landmarks_N_km[:,1], landmarks_N_km[:,2], 
-               c='r', s=8, label='Landmarks')
+    landmarks_N_km = np.array(landmarks_N_km)
+    # --- Plot ---
+    fig = plt.figure(figsize=(8, 8))
+    ax = fig.add_subplot(111, projection='3d')
 
-ax.set_xlabel('x [km]')
-ax.set_ylabel('y [km]')
-ax.set_zlabel('z [km]')
-ax.set_title('Generated Landmarks on Lunar Surface')
-ax.legend()
-ax.set_box_aspect([1,1,1])
-plt.show()
+    # body (sphere)
+    u, v = np.mgrid[0:2*np.pi:50j, 0:np.pi:25j]
+    x = bodyRadius_km * np.cos(u) * np.sin(v)
+    y = bodyRadius_km * np.sin(u) * np.sin(v)
+    z = bodyRadius_km * np.cos(v)
+    ax.plot_surface(x, y, z, color='lightgray', alpha=0.5)
+
+    # trajectory
+    ax.plot(rN_km[:,0], rN_km[:,1], rN_km[:,2], 'b', label='Trajectory')
+
+    # landmarks
+    if len(landmarks_N_km) > 0:
+        ax.scatter(landmarks_N_km[:,0], landmarks_N_km[:,1], landmarks_N_km[:,2], 
+                c='r', s=8, label='Landmarks')
+
+    ax.set_xlabel('x [km]')
+    ax.set_ylabel('y [km]')
+    ax.set_zlabel('z [km]')
+    ax.set_title('Generated Landmarks on Lunar Surface')
+    ax.legend()
+    ax.set_box_aspect([1,1,1])
+    plt.show()
