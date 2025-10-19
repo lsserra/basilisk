@@ -7,37 +7,16 @@ from scipy.integrate import solve_ivp
 from scipy.interpolate import interp1d
 
 import pickle
-
-
 from EkfPoseEstimator import EkfErrorState, EkfReferenceState, EkfPoseEstimator
 
 # attitude helpers
 from helpers.attitude import DCM
 from helpers.attitude.Quaternion import Quaternion
 
+from faciliateSimulation import generateLandmarks, propagateMCMF
+
 # Add the basilisk root to the Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
-
-
-
-
-
-
-
-
-# # Example: 100 km altitude circular orbit
-# MU_MOON = 4902.799 * 1e9 # m^3/s^3
-# r_test = np.array([1737.4e3 + 100e3, 0, 0])
-# v_circ = np.sqrt(MU_MOON / np.linalg.norm(r_test))
-# x0 = np.hstack((r_test, [0, v_circ, 0]))
-
-# xdot = EkfPoseEstimator.McmfPoseDynamics(0, x0)
-# print(xdot[3:])
-
-
-
-
-
 
 
 with open("data/MoonCentralBody_MoonGrav.pkl", "rb") as f:
@@ -82,8 +61,6 @@ q_MN_0.normalize()
 w_MN_M = np.array([0.0, 0.0, 2*np.pi/27.322/24/3600])
 
 
-def dqdt_wrapper(t, q):
-    return Quaternion.dqdt(t, w_MN_M, q)
 
 # lets set up a for loop over sim time
 
@@ -98,6 +75,9 @@ r_PM_M = np.array([1737.4e3 + 1.e3 , 0.0, 0.0])
 eclipticPlane_r_PM_M = None
 r_PM_N_store = []
 eclipticPlane_r_PM_M_store = []
+
+
+
 
 
 
@@ -146,6 +126,13 @@ ekf.initialize(mx_prior_tk_= errState0,
                xRef_tk_ = xRef0)
 
 
+
+# generate some landmarks
+
+eqRadMoon = 1737.4e3 # km
+
+
+
 for i, tk in enumerate(timeData):
     if i == 0:
         q_MN_store.append(q_MN_0)
@@ -159,30 +146,17 @@ for i, tk in enumerate(timeData):
         continue
 
     tkm = timeData[i-1]
+
     ### MCMF TRUTH GENERATION ###
-    # --- attitude --- #
-    sol = solve_ivp(
-        fun=dqdt_wrapper,
-        t_span=[tkm, tk],
-        y0=q_MN_tkm,
-        method='RK45',
-        rtol=1e-9,
-        atol=1e-9
-    )
-
-    q_MN_tk = sol.y[:, -1]
-
-    # Normalize quaternion
-    if q_MN_tk[-1] < 0:
-        q_MN_tk = -q_MN_tk
-    q_MN_tk /= np.linalg.norm(q_MN_tk)
-
-    qObj = Quaternion.from_array(q_MN_tk)
-    q_MN_store.append(qObj)
+    # --- MCMF Coordinate Frame --- #
+    q_MN_tk = propagateMCMF(
+        tkm=tkm,
+        tk=tk,
+        q_MN_tkm=q_MN_tkm)
+    
+    q_MN_tk_obj = Quaternion.from_array(q_MN_tk)
+    q_MN_store.append(q_MN_tk_obj)
     q_MN_tkm = q_MN_tk
-
-    q_MN_tk_obj = qObj
-
 
     # --- position --- #
     r_BM_N = sc_pos[i,:]
@@ -195,15 +169,8 @@ for i, tk in enumerate(timeData):
     Mdrdt_BM_M_M_TruthStore.append(Mdrdt_BM_M)
 
 
-    ## foo position vector of point p
-    Nhat3 = np.array([0., 0., 1.])
-    Nhat3_M = q_MN_tk_obj.rotate(Nhat3)
-    # remove portion of vector normal to eclliptic plane
-    eclipticPlane_r_PM_M = r_PM_M - np.dot(r_PM_M,Nhat3_M)*Nhat3_M
-    eclipticPlane_r_PM_M_store.append(eclipticPlane_r_PM_M)
-    q_NM_tk_obj = q_MN_tk_obj.inverse()
-    q_NM_tk_obj.normalize()
-    r_PM_N_store.append(q_NM_tk_obj.rotate(eclipticPlane_r_PM_M))
+    
+
 
 
     ### EKF Progpagation ###
