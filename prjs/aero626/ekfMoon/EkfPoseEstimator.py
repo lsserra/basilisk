@@ -72,32 +72,6 @@ def EkfCoupledMeanAndCovProp(t, x_aug, MU_MOON, w_MN_M, Fw, Qww, nx):
     return x_aug_dot
 
 
-def McmfPoseDynamics(t,x):
-
-    MU_MOON = 4902.799 # km^3/s^3
-    w_MN_M = np.array([0.0, 0.0, 2*np.pi/27.322/24/3600])
-
-    r_BM_M = x[:3]
-    Mdrdt_BM_M = x[3:]
-    r_BM_M_norm = np.linalg.norm(r_BM_M)
-
-    fgrav = -MU_MOON*r_BM_M/r_BM_M_norm**3
-    coriolis = 2* np.cross(w_MN_M,Mdrdt_BM_M)
-    centripital = np.cross(w_MN_M, np.cross(w_MN_M, r_BM_M))
-    dr2dt2_BM_M_M = fgrav - coriolis - centripital
-    
-    xdot = np.hstack([Mdrdt_BM_M,dr2dt2_BM_M_M])
-
-    return xdot
-
-def CovDynamics(t, P_flat, Fx, Fw, Qww, nx):
-    """Compute covariance derivative for EKF."""
-    P = P_flat.reshape((nx, nx))
-    Pdot = Fx @ P + P @ Fx.T + Fw @ Qww @ Fw.T
-    return Pdot.flatten()
-
-
-
 
 ############################################
 # Classes to hold Error and Reference States

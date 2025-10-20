@@ -315,5 +315,5 @@ if __name__ == "__main__":
     run(
         True,        # show_plots
         True,      # save pkl file
-        False, # EarthAndMoonGrav
+        True, # EarthAndMoonGrav
     )

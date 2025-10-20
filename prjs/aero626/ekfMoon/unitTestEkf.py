@@ -21,7 +21,8 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.
 
 
 
-with open("data/MoonCentralBody_MoonGrav.pkl", "rb") as f:
+# with open("data/MoonCentralBody_MoonGrav.pkl", "rb") as f:
+with open("data/MoonCentralBody_MoonEarthGrav.pkl", "rb") as f:
     sim_data = pickle.load(f)
 
 timeData = sim_data["time"] * 1e-9 # to seconds
