@@ -34,7 +34,7 @@ moon_vel = sim_data["moon_vel"] / 1000
 # earth_pos = sim_data["earth_pos"] / 1000
 # earth_vel = sim_data["earth_vel"] / 1000
 gyro_meas = sim_data["gryoAngVel"] # rad/s
-gryo_time = sim_data["timeGyro"] * 1e-9 # to seconds
+gyro_time = sim_data["timeGyro"] * 1e-9 # to seconds
 
 q_BN_truth = sim_data["q_BN_truth"]
 
@@ -210,8 +210,8 @@ for i, tk in enumerate(timeData):
     # --- Attitude --- #
     q_NM_i = q_MN_tk_obj.inverse()
     q_BN_i = q_BN_truth[i]
-    q_BM_true_array = (q_BN_i*q_NM_i).as_array()
-    q_BM_store.append(q_BM_true_array)
+    q_BM_true = q_NM_i*q_BN_i ## TODO CONTRARY TO DEMARS DOCUMENTATION!
+    q_BM_store.append(q_BM_true.as_array())
 
 
     
@@ -221,7 +221,9 @@ for i, tk in enumerate(timeData):
     ### EKF Progpagation ###
     # grab gyro meas
     w_BN_B = gyro_meas[i,:]
-    ekf.propagate(toTime=tk, w_BM_B_meas=w_BN_B)
+    w_MN_B = q_BM_true.rotate(w_MN_M)
+    w_BM_B = w_BN_B - w_MN_B
+    ekf.propagate(toTime=tk, w_BM_B_meas=w_BM_B)
 
     # manually get ready for next time
     ekf.mx_posVel_prior_tk_ = ekf.mx_posVel_prior_tk
