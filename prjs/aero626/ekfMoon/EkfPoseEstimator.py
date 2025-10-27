@@ -210,7 +210,7 @@ class EkfPoseEstimator():
         self.landmarkMap = landmarkMapMCMF
 
 
-    def propagate(self,toTime,w_BM_B_meas):
+    def propagate(self,toTime,w_BN_B_meas):
         ''' 
             tk = toTime
 
@@ -283,8 +283,13 @@ class EkfPoseEstimator():
 
         # gyro mean dynamics = 0
 
-        # propagate quaternion
-        w_BM_B_corrected = (w_BM_B_meas - self.mx_mekf_prior_tk_.gyroBiasRef.flatten()).flatten()
+        ## --- propagate quaternion --- ##
+
+        # collect gyro measurement and correct with current bias est
+        w_BN_B_corrected = (w_BN_B_meas - self.mx_mekf_prior_tk_.gyroBiasRef.flatten()).flatten()
+        # rotate MCMF angular velocity into body frame
+        w_MN_B = self.mx_mekf_prior_tk_.q_BMref.rotate(self.w_MN_M)
+        w_BM_B_corrected = w_BN_B_corrected - w_MN_B
         q_BM_tk_ = self.mx_mekf_prior_tk_.q_BMref.as_array()
 
         sol = solve_ivp(
@@ -307,7 +312,7 @@ class EkfPoseEstimator():
             [-wy, wx, 0]
         ])
         
-        FxMekf = np.hstack((omega_skew,-np.eye(3)))
+        FxMekf = np.hstack((-omega_skew,-np.eye(3)))
         FxMekf = np.vstack((FxMekf,np.zeros((3,6))))
         
         PxxFlat = self.mx_mekf_prior_tk_.Pxx.flatten()

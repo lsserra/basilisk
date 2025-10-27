@@ -221,9 +221,7 @@ for i, tk in enumerate(timeData):
     ### EKF Progpagation ###
     # grab gyro meas
     w_BN_B = gyro_meas[i,:]
-    w_MN_B = q_BM_true.rotate(w_MN_M)
-    w_BM_B = w_BN_B - w_MN_B
-    ekf.propagate(toTime=tk, w_BM_B_meas=w_BM_B)
+    ekf.propagate(toTime=tk, w_BN_B_meas=w_BN_B)
 
     # manually get ready for next time
     ekf.mx_posVel_prior_tk_ = ekf.mx_posVel_prior_tk
