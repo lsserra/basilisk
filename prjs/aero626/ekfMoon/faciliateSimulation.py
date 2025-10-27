@@ -8,7 +8,7 @@ from scipy.interpolate import interp1d
 
 import pickle
 
-from EkfPoseEstimator import EkfErrorState, EkfReferenceState, EkfPoseEstimator
+# from EkfPoseEstimator import EkfErrorState, EkfReferenceState, EkfPoseEstimator
 
 # attitude helpers
 from helpers.attitude import DCM

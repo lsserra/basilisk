@@ -7,7 +7,7 @@ from scipy.integrate import solve_ivp
 from scipy.interpolate import interp1d
 
 import pickle
-from EkfPoseEstimator import EkfErrorState, EkfReferenceState, EkfPoseEstimator
+from EkfPoseEstimator import EkfPosVelState, MekfState, EkfPoseEstimator
 
 # attitude helpers
 from helpers.attitude import DCM
@@ -21,8 +21,8 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.
 
 
 
-# with open("data/MoonCentralBody_MoonGrav.pkl", "rb") as f:
-with open("data/MoonCentralBody_MoonEarthGrav.pkl", "rb") as f:
+with open("data/MoonCentralBody_MoonGrav.pkl", "rb") as f:
+# with open("data/MoonCentralBody_MoonEarthGrav.pkl", "rb") as f:
     sim_data = pickle.load(f)
 
 timeData = sim_data["time"] * 1e-9 # to seconds
@@ -89,13 +89,12 @@ eclipticPlane_r_PM_M_store = []
 nx = 6
 nz = 3
 # ekf object
-ekf = EkfPoseEstimator(nx=nx,nz=nz)
+ekf = EkfPoseEstimator()
 # Process Noise
 psd_r = 0.01 # 
 psd_Mdrdt = 0.001 # 
-Qww = np.diag([psd_r,psd_r,psd_r,psd_Mdrdt,psd_Mdrdt,psd_Mdrdt])
-ekf.Qww = Qww*Qww.T # squared
-ekf.Fw = np.eye(nx)
+Qww_posVel = np.diag([psd_r,psd_r,psd_r,psd_Mdrdt,psd_Mdrdt,psd_Mdrdt])
+
 
 ### intial conditions
 # time 
@@ -105,36 +104,41 @@ t0 = timeData[0]
 sigma_r = 0.1 # m
 sigma_Mdrdt = 0.01 # m/s
 
-## error state
-errState0 = EkfErrorState(nx=nx)
-errState0.mx = np.zeros((nx,1))
+## Initial Pos Vel state obj ##
+posVelState0 = EkfPosVelState(nx=nx)
+
 Pxx0 = np.diag([sigma_r,sigma_r,sigma_r,sigma_Mdrdt,sigma_Mdrdt,sigma_Mdrdt])
 Pxx0 = Pxx0 @ Pxx0.T
-errState0.Pxx = Pxx0
-errState0.t = t0
+posVelState0.Pxx = Pxx0
+posVelState0.t = t0
 
-## reference state
-xRef0 = EkfReferenceState()
-    # is true state for now
+# MCMF position and velocity
 r_BM_M0 = q_MN_0.rotate(sc_pos[0,:])
 rdot_BM_M = q_MN_0.rotate(sc_vel[0,:])
 Mdrdt_BM_M0 = rdot_BM_M - (np.cross(w_MN_M, r_BM_M0))
-    # fill
-xRef0.r_BM_M = r_BM_M0
-xRef0.Mdrdt_BM_M = Mdrdt_BM_M0
-xRef0.t = t0
+# fill
+posVelState0.r_BM_M_mean = r_BM_M0
+posVelState0.Mdrdt_BM_M_mean = Mdrdt_BM_M0
 
+## Initial MEKF state obj ##
+mekfState0 = MekfState(nx=nx)
+# TODO grab data attitude data from sim
 # pass to ekf obj
-ekf.initialize(mx_prior_tk_= errState0,
-               xRef_tk_ = xRef0)
+
+
+# pass IC's, process noise PSD to filter
+ekf.initialize(
+    initPosVelState=posVelState0,
+    initMekfState=mekfState0,
+    QPosVel=Qww_posVel,
+    Qmekf=0.00001 * np.eye(6)) # TODO check!
+
 
 
 
 # generate some landmarks
 
 eqRadMoon = 1737.4e3 # km
-
-
 
 for i, tk in enumerate(timeData):
     if i == 0:
@@ -177,17 +181,18 @@ for i, tk in enumerate(timeData):
 
 
     ### EKF Progpagation ###
-    ekf.propagate(toTime=tk)
+    fooW = np.zeros((3,1))
+    ekf.propagate(toTime=tk, w_BM_B_meas=fooW)
 
     # manually get ready for next time
-    ekf.xRef_tk_ = ekf.xRef_tk
-    ekf.mx_prior_tk_ = ekf.mx_prior_tk
+    ekf.mx_posVel_prior_tk_ = ekf.mx_posVel_prior_tk
+    ekf.mx_mekf_prior_tk_ = ekf.mx_mekf_prior_tk
 
 
     ## running error check
 
-    r_error = r_BM_M - ekf.xRef_tk.r_BM_M
-    v_error = Mdrdt_BM_M - ekf.xRef_tk.Mdrdt_BM_M
+    r_error = r_BM_M - ekf.mx_posVel_post_tk.r_BM_M_mean
+    v_error = Mdrdt_BM_M - ekf.mx_posVel_post_tk.Mdrdt_BM_M_mean
     angleDiff = Quaternion.computeEulerVecAttErrorFromQuats(q_ref=q_MN_store[i-1],q_est=q_MN_store[i])
 
     foo=1
@@ -198,20 +203,20 @@ for i, tk in enumerate(timeData):
 
 
 # grab ekf error state and reference state and make plots
-errorStateList = copy.deepcopy(ekf.errorState_log)
-referenceStateList = copy.deepcopy(ekf.refState_log)
+posVelStateList = copy.deepcopy(ekf.posVelState_log)
+mekfStateList = copy.deepcopy(ekf.mekfState_log)
 
 
 
 # Extract times and covariance diagonals
-t_filt = np.array([s.t for s in errorStateList])
-Pxx_list = [s.Pxx for s in errorStateList]
+t_filt = np.array([s.t for s in posVelStateList])
+Pxx_list = [s.Pxx for s in posVelStateList]
 P_diag = np.array([np.diag(P) for P in Pxx_list])
 sigma3 = 3 * np.sqrt(P_diag)
 
 # Extract reference state
-r_filt = np.array([xref.r_BM_M for xref in referenceStateList])
-v_filt = np.array([xref.Mdrdt_BM_M for xref in referenceStateList])
+r_filt = np.array([xref.r_BM_M_mean for xref in posVelStateList])
+v_filt = np.array([xref.Mdrdt_BM_M_mean for xref in posVelStateList])
 
 # Extract true state
 r_truth = np.array(r_BM_M_TruthStore)

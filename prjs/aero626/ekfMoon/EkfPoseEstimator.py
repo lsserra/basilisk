@@ -111,28 +111,16 @@ class MekfState():
     def __init__(self,nx):
         # reference states
         self.q_BMref = Quaternion.identity()
-        self.gyroBiasRef = np.zeros(3,1)
+        self.gyroBiasRef = np.zeros((3,1))
         
         # error states
-        self.angleError_mean = np.zeros(3,1)
-        self.gyroBiasError_mean = np.zeros(3,1)
+        self.angleError_mean = np.zeros((3,1))
+        self.gyroBiasError_mean = np.zeros((3,1))
 
         # error cov
         self.Pxx = np.eye(nx)
 
         self.t = 0.
-
-
-class NoiseContatiner():
-    def __init__(QPosVel,QMekf,Pvv):
-
-    
-        
-
-
-
-
-
 
 
 
@@ -141,7 +129,6 @@ class NoiseContatiner():
 ############################################
 
 class EkfPoseEstimator():
-
     def __init__(self):
         
         # define state sizes
@@ -166,7 +153,7 @@ class EkfPoseEstimator():
 
         # Process Noise Shaping 
         self.Fw_posVel = np.eye(self.nx_posVel)
-        self.Fw_mekf = block_diag(-np.eye(self.nx_mekf),np.eye(self.nx_mekf))
+        self.Fw_mekf = block_diag(-np.eye(self.nx_mekf//2),np.eye(self.nx_mekf//2))
 
         # PSD
         self.QPosVel = np.zeros((self.nx_posVel,self.nx_posVel))
@@ -277,8 +264,8 @@ class EkfPoseEstimator():
 
         # reconstruct reference state and error covariance
         x_aug_sol = sol.y 
-        x_sol_tk = x_aug_sol[:self.nx, -1]
-        Pxx_sol_tk = x_aug_sol[self.nx:, -1].reshape(self.nx,self.nx)
+        x_sol_tk = x_aug_sol[:self.nx_posVel, -1]
+        Pxx_sol_tk = x_aug_sol[self.nx_posVel:, -1].reshape(self.nx_posVel,self.nx_posVel)
 
         # update pos vel state obj post propagation
         self.mx_posVel_prior_tk.r_BM_M_mean = x_sol_tk[:3]
@@ -292,22 +279,21 @@ class EkfPoseEstimator():
         tkm_mekf = self.mx_mekf_prior_tk_.t
         if not np.isclose(tkm,tkm_mekf,1e-8):
             raise ValueError("Propagation tk minus for pos/vel and MEKF states do not align.")
-
         # error states are zero, error has been added to nominal
 
         # gyro mean dynamics = 0
 
         # propagate quaternion
-        w_BM_B_corrected = w_BM_B_meas - self.mx_mekf_prior_tk_.gyroBiasRef
+        w_BM_B_corrected = (w_BM_B_meas - self.mx_mekf_prior_tk_.gyroBiasRef).flatten()
         q_BM_tk_ = self.mx_mekf_prior_tk_.q_BMref.as_array()
 
         sol = solve_ivp(
-        fun=lambda t,x : dqdt_wrapper(t,x,w_BM_B=w_BM_B_corrected),
-        t_span=[tkm, tk],
-        y0=q_BM_tk_,
-        method='RK45',
-        rtol=1e-9,
-        atol=1e-9
+            fun=lambda t,x : dqdt_wrapper(t,x,w_BM_B=w_BM_B_corrected),
+            t_span=[tkm, tk],
+            y0=q_BM_tk_,
+            method='RK45',
+            rtol=1e-9,
+            atol=1e-9
         )
 
         q_MN_tk = sol.y[:, -1]
@@ -321,9 +307,8 @@ class EkfPoseEstimator():
             [-wy, wx, 0]
         ])
         
-        FxMekf = np.array([
-            [omega_skew,-np.eye(3)],
-            np.zeros((3,6))])
+        FxMekf = np.hstack((omega_skew,-np.eye(3)))
+        FxMekf = np.vstack((FxMekf,np.zeros((3,6))))
         
         PxxFlat = self.mx_mekf_prior_tk_.Pxx.flatten()
         
@@ -390,10 +375,8 @@ class EkfPoseEstimator():
         
 
 
-'''
 
-
-     # ---------------------------------------------------------
+    # ---------------------------------------------------------
     # Internal Logging Helpers
     def _log_state(self, x, P, t):
         self.state_log.append((t, x.copy()))
@@ -423,4 +406,3 @@ class EkfPoseEstimator():
         times = np.array([t for t, _ in self.outlier_log])
         rejected = np.array([flag for _, flag in self.outlier_log])
         return times, rejected
-'''
