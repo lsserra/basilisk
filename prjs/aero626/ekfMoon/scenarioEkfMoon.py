@@ -1,5 +1,5 @@
 
-import os
+import os, sys
 from copy import copy
 import pickle
 from Basilisk.topLevelModules import pyswice
@@ -8,6 +8,11 @@ from Basilisk.simulation import imuSensor
 from Basilisk.utilities import RigidBodyKinematics as rbk
 
 from Basilisk.utilities.pyswice_spk_utilities import spkRead
+
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
+
+from helpers.attitude.Quaternion import Quaternion
 
 
 
@@ -148,10 +153,11 @@ def run(showPlots, savePkl, EarthAndMoonGrav):
     
     # Configure gyro noise (rad/s)
     # imu.senRotBias = np.array([0.,0.,0.])
-    senRotNoiseStd = 0.0001 # rad/s
+    senRotNoiseStd = 0.0000 # rad/s
     walkBound = 0.01 # rad/s
     PMatrix = np.eye(3)* senRotNoiseStd**2 # cholesky defactorization of noise covariance matrix, drives Gauss Markov Process
-    L = np.linalg.cholesky(PMatrix)
+    # L = np.linalg.cholesky(PMatrix)
+    L = np.zeros((3,3))
     imu.PMatrixGyro = L
     AMatrixGyro = np.zeros((3,3))
     imu.AMatrixGyro = AMatrixGyro
@@ -186,6 +192,7 @@ def run(showPlots, savePkl, EarthAndMoonGrav):
     # Retrieve logged data
     posData = scDataRec.r_BN_N
     velData = scDataRec.v_BN_N
+    mrpBN = scDataRec.sigma_BN
     timeData = scDataRec.times()
     moonPos = MoonDataRec.PositionVector
     moonVel = MoonDataRec.VelocityVector
@@ -205,12 +212,24 @@ def run(showPlots, savePkl, EarthAndMoonGrav):
     velData[:] -= moonVel[:]
 
 
-            # Bundle everything in one dictionary
+    ## convert true s/c MRP N to B attitude to quaternion representation
+    q_BN_truth_list = []
+    for att_i in range(mrpBN.shape[0]):
+        # mrp to quaternion
+        q_BN_i = rbk.MRP2EP(mrpBN[att_i,:])
+        # vector first quaternion object
+        q_BN_truth = Quaternion(q0=q_BN_i[0],qv=q_BN_i[1:]).normalize()
+        q_BN_truth_list.append(q_BN_truth)
+    
+    
+
+    # Bundle everything in one dictionary
     if savePkl:
         data_bundle = {
             "time": timeData,
             "sc_pos": posData,
             "sc_vel": velData,
+            "q_BN_truth":q_BN_truth_list,
             "moon_pos": moonPos,
             "moon_vel": moonVel,
             "earth_pos": earthPos,
@@ -315,5 +334,5 @@ if __name__ == "__main__":
     run(
         True,        # show_plots
         True,      # save pkl file
-        True, # EarthAndMoonGrav
+        False, # EarthAndMoonGrav
     )

@@ -32,6 +32,10 @@ moon_pos = sim_data["moon_pos"] / 1000
 moon_vel = sim_data["moon_vel"] / 1000
 # earth_pos = sim_data["earth_pos"] / 1000
 # earth_vel = sim_data["earth_vel"] / 1000
+gyro_meas = sim_data["gryoAngVel"] # rad/s
+gryo_time = sim_data["timeGyro"] * 1e-9 # to seconds
+
+q_BN_truth = sim_data["q_BN_truth"]
 
 print("Simulation data successfully unboxed.")
 
@@ -69,8 +73,11 @@ w_MN_M = np.array([0.0, 0.0, 2*np.pi/27.322/24/3600])
 
 r_BM_M_TruthStore = []
 Mdrdt_BM_M_M_TruthStore = [] # time derivative of position B wrt M, as seen from M, coordinatized in M
-q_MN_store = []
+q_MN_store = [] # MCMF defintion
 q_MN_tkm =q_MN_0.as_array()
+
+# list for MCMF to body truth attitude
+q_BM_store = []
 
 
 # take vector in M and map to N, then plot traj
@@ -142,7 +149,13 @@ eqRadMoon = 1737.4e3 # km
 
 for i, tk in enumerate(timeData):
     if i == 0:
+        
+        # MCMF and sc body attitude 
         q_MN_store.append(q_MN_0)
+        q_NM_0 = q_MN_0.inverse()
+        q_BN_0 = q_BN_truth[i]
+        q_BM_store.append(q_BN_0*q_NM_0)
+
         # initial r_BM_M and Mdrdt_BM_M
         r_BM_M0 = q_MN_0.rotate(sc_pos[0,:])
         rdot_BM_M = q_MN_0.rotate(sc_vel[0,:])
@@ -175,14 +188,20 @@ for i, tk in enumerate(timeData):
     Mdrdt_BM_M = rdot_BM_M - (np.cross(w_MN_M, r_BM_M))
     Mdrdt_BM_M_M_TruthStore.append(Mdrdt_BM_M)
 
+    # --- Attitude --- #
+    q_NM_i = q_MN_tk_obj.inverse()
+    q_BN_i = q_BN_truth[i]
+    q_BM_store.append(q_BN_i*q_NM_i)
+
 
     
 
 
 
     ### EKF Progpagation ###
-    fooW = np.zeros((3,1))
-    ekf.propagate(toTime=tk, w_BM_B_meas=fooW)
+    # grab gyro meas
+    w_BN_B = gyro_meas[i,:]
+    ekf.propagate(toTime=tk, w_BM_B_meas=w_BN_B)
 
     # manually get ready for next time
     ekf.mx_posVel_prior_tk_ = ekf.mx_posVel_prior_tk

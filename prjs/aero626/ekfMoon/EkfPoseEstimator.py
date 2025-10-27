@@ -284,7 +284,7 @@ class EkfPoseEstimator():
         # gyro mean dynamics = 0
 
         # propagate quaternion
-        w_BM_B_corrected = (w_BM_B_meas - self.mx_mekf_prior_tk_.gyroBiasRef).flatten()
+        w_BM_B_corrected = (w_BM_B_meas - self.mx_mekf_prior_tk_.gyroBiasRef.flatten()).flatten()
         q_BM_tk_ = self.mx_mekf_prior_tk_.q_BMref.as_array()
 
         sol = solve_ivp(
