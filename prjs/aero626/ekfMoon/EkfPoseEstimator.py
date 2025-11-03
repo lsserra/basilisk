@@ -160,7 +160,7 @@ class EkfPoseEstimator():
         self.QMekf = np.zeros((self.nx_mekf,self.nx_mekf))
 
         # --- Measurement Update Related --- #
-        self.Hx = np.hstack( (-np.identity(3),np.zeros((3,3))) )
+        self.HxTrans = np.hstack( (-np.identity(3),np.zeros((3,3))) )
         self.Hv = np.eye(self.nz)
         self.Pvv = np.eye(self.nz)
         self.landmarkMap = None
@@ -356,28 +356,91 @@ class EkfPoseEstimator():
 
 
 
-    def updateWithLandmarks(self, z_meas_array, measTime):
-        foo =1
-        
-        # get propagated error and reference state
-        dmx_prior_tk = self.mx_prior_tk.mx
-        Pxx_prior_tk = self.mx_prior_tk.Pxx
-        r_BM_M_tk = self.xRef_tk.r_BM_M_mean
-        Mdrdt_BM_M = self.xRef_tk.Mdrdt_BM_M_mean
+    def updateWithLandmarks(self, z_meas_array, measTime):       
+
+        # get column of id's
+        landmarkIds = z_meas_array[:,-1].astype(int)
+        landmarkMeas = z_meas_array[:,:3].flatten()
+        # get position at measurement time
+        r_BM_M_tk = self.mx_posVel_prior_tk.r_BM_M_mean.flatten()
+
+        # obtain relative position vectors to landmarks with current position estimate
+        r_LM_M = self.landmarkMap[landmarkIds,:]
+        r_LB_M = r_LM_M - r_BM_M_tk
+
+        innovationsVec = landmarkMeas - r_LB_M.flatten()
 
         
-        # shape measurement array
-        z = z_meas_array.reshape(-1, 3)
-        
-        for i in range(len(z)):
+        # construct measurement matrix
+        Hx = None
+        Pxxk_prior_block = None
+        for i in range(z_meas_array.shape[0]):
 
-            # Innovation
-            lmId = z[i,-1]
-            r_LM_M = self.landmarkMap[lmId,:]
-            mzk = r_LM_M - r_BM_M_tk
-            zk = z[i,:]
-            inn =  - mzk
+            # translation Hx with nx_fullstate columns
+            HxTrans = np.hstack((self.HxTrans, np.zeros((self.nz, self.nx_mekf))))
+            
+            # MEKF Hx with nx_fullstate columns
+            HxMekf = np.zeros((self.nz,self.nx_full))
+            r_LB_B = self.mx_mekf_prior_tk.q_BMref.rotate(r_LB_M[i,:])
+            rx,ry,rz = r_LB_B
+            r_LB_B_skew = np.array([
+                [0, -rz, ry],
+                [rz, 0, -rx],
+                [-ry, rx, 0]
+            ])
+            HxMekf[:,6:9] = r_LB_B_skew
+            HxMekf[:,9:] = np.zeros((self.nz, self.nx_mekf))
+
+            if Hx == None:
+                Hx = np.hstack((self.HxTrans,HxMekf))
+                Pxxk_prior_block = block_diag(
+                    self.mx_posVel_prior_tk.Pxx,
+                    self.mx_mekf_prior_tk.Pxx)
+            else:
+                Hx = np.hstack((Hx,HxTrans,HxMekf))
+                Pxxk_prior_block = block_diag(
+                    Pxxk_prior_block,
+                    self.mx_posVel_prior_tk.Pxx,
+                    self.mx_mekf_prior_tk.Pxx)
+
+        # prepare for kalman update
+        Pxzk = Pxxk_prior_block @ Hx.T
+        Pzzk = Hx @ Pxxk_prior_block @ Hx.T + self.Pvv
+        Kk = Pxzk @ linalg.inv(Pzzk)
+
+        # create full state 
+        mxk_prior = np.hstack((
+            self.mx_posVel_prior_tk.r_BM_M_mean.flatten(),
+            self.mx_posVel_prior_tk.Mdrdt_BM_M_mean.flatten(),
+            self.mx_mekf_prior_tk.angleError_mean.flatten(),
+            self.mx_mekf_prior_tk.gyroBiasError_mean.flatten()
+        ))
+        Pxxk_prior = block_diag(
+                    self.mx_posVel_prior_tk.Pxx,
+                    self.mx_mekf_prior_tk.Pxx)
+        # kalman update
+        mxk_post = mxk_prior + Kk @ innovationsVec
+        Pxxk_post = Pxxk_prior - Pxzk@Kk.T -Kk@Pxzk.T + Kk @ Pzzk @ Kk.T
+
+        # unpack updated states
+        self.mx_posVel_post_tk.r_BM_M_mean = mxk_post[:3]
+        self.mx_posVel_post_tk.Mdrdt_BM_M_mean = mxk_post[3:6]
+        self.mx_mekf_post_tk.angleError_mean = mxk_post[6:9]
+        self.mx_mekf_post_tk.gyroBiasError_mean = mxk_post[9:]
+
+        self.mx_posVel_post_tk.Pxx = Pxxk_post[:6,:6]
+        self.mx_mekf_post_tk.Pxx = Pxxk_post[6:,6:]
         
+        # add attitude error correction to nominal quaternion
+        q_err = Quaternion(qv=self.mx_mekf_post_tk.angleError_mean.flatten(),
+                           q0=1.0)
+        q_BM_post = (q_err*self.mx_mekf_prior_tk.q_BMref).normalize()
+
+
+
+
+        
+            
 
 
 

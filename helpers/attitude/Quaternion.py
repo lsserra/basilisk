@@ -64,7 +64,7 @@ class Quaternion:
         p, q = self.q, other.q
         p_v, p_0 = p[:3], p[3]
         q_v, q_0 = q[:3], q[3]
-        v = p_0 * q_v + q_0 * p_v + np.cross(p_v, q_v)
+        v = p_0 * q_v + q_0 * p_v - np.cross(p_v, q_v)
         s = p_0 * q_0 - np.dot(p_v, q_v)
         return Quaternion(v, s)
 
@@ -86,11 +86,11 @@ class Quaternion:
     # --- Rotation of Vectors ---
 
     def rotate(self, v):
-        """Rotate a 3-vector v using this quaternion (passive rotation) q^-1 x v x q."""
+        """Rotate a 3-vector v using this quaternion (passive rotation) q v x q^-1."""
         v = np.array(v, dtype=float)
         q_inv = self.inverse()
         v_pure = Quaternion(v, 0.0)
-        rot_pure = q_inv * v_pure * self 
+        rot_pure = self * v_pure * q_inv 
         return rot_pure.vector()
     
 

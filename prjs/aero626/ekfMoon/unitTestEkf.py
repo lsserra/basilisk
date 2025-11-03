@@ -42,6 +42,13 @@ print("Simulation data successfully unboxed.")
 
 
 
+with open("data/landmarks.pkl", "rb") as f:
+    landmark_data = pickle.load(f)
+trueLandmarks = landmark_data["trueLandmarks"]
+mapLandmarks = landmark_data["mapLandmarks"]
+print("Landmark data successfully unboxed.")
+
+
 # DCM definition of MCMF frame
 lunarObliquityToEcliptic = 1.54 # deg
 
@@ -210,7 +217,7 @@ for i, tk in enumerate(timeData):
     # --- Attitude --- #
     q_NM_i = q_MN_tk_obj.inverse()
     q_BN_i = q_BN_truth[i]
-    q_BM_true = q_NM_i*q_BN_i ## TODO CONTRARY TO DEMARS DOCUMENTATION!
+    q_BM_true = q_BN_i * q_NM_i 
     q_BM_store.append(q_BM_true.as_array())
 
 

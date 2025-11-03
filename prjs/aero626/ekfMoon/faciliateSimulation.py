@@ -10,13 +10,13 @@ import pickle
 
 # from EkfPoseEstimator import EkfErrorState, EkfReferenceState, EkfPoseEstimator
 
-# attitude helpers
-from helpers.attitude import DCM
-from helpers.attitude.Quaternion import Quaternion
 
 # Add the basilisk root to the Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
 
+# attitude helpers
+from helpers.attitude import DCM
+from helpers.attitude.Quaternion import Quaternion
 
 
 
@@ -123,3 +123,10 @@ if __name__ == "__main__":
     ax.legend()
     ax.set_box_aspect([1,1,1])
     plt.show()
+
+    # save to file
+    landmarkPicklePath = os.path.join('data', "landmarks.pkl")
+    with open(landmarkPicklePath, "wb") as f:
+        pickle.dump({"trueLandmarks": trueLandmarks, "mapLandmarks": mapLandmarks}, f)
+
+    print(f"Saved trueLandmarks and mapLandmarks to {landmarkPicklePath}")
