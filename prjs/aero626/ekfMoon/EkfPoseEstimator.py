@@ -194,7 +194,7 @@ class EkfPoseEstimator():
         # --- Logging containers ---
         self.posVelState_log = []
         self.mekfState_log = []
-        self.innovation_log = []  # stores (t, innovation)        
+        self.innovation_log = []       
         self.outlier_log = []
 
 
@@ -366,13 +366,14 @@ class EkfPoseEstimator():
 
 
 
-    def updateWithLandmarks(self, z_meas_array, measTime):       
+    def updateWithLandmarks(self, z_meas_matrix, measTime):       
 
         # get column of id's
-        landmarkIds = z_meas_array[:,-1].astype(int)
-        landmarkMeas = z_meas_array[:,:3].flatten()
+        landmarkIds = z_meas_matrix[:,-1].astype(int)
+        landmarkMeas = z_meas_matrix[:,:3]
+
         # get position at measurement time
-        r_BM_M_tk = self.mx_posVel_prior_tk.r_BM_M_mean.flatten()
+        mr_BM_M_tk = self.mx_posVel_prior_tk.r_BM_M_mean.flatten()
 
 
         # construct measurement matrix
@@ -380,13 +381,17 @@ class EkfPoseEstimator():
         PvvStack = None
         mzkStack = None
         innovationsVec = None
-        for i in range(z_meas_array.shape[0]):
+        for i in range(z_meas_matrix.shape[0]):
 
-            # get innovation
-            mzk = self.mx_mekf_post_tk.q_BMref.rotate(
-                self.landmarkMap[landmarkIds[i],:].flatten() - r_BM_M_tk
-            ).reshape((3,1))
-            innovation = (landmarkMeas[i,:].reshape((3,1)) - mzk).flatten()
+            # get map landmark position
+            map_r_LM_M = self.landmarkMap[landmarkIds[i],:].flatten()
+            map_r_LM_B= self.mx_mekf_post_tk.q_BMref.rotate(
+                map_r_LM_M
+            ) 
+
+            # compute mean of measurement model
+            mzk = self.mx_mekf_prior_tk.q_BMref.rotate(map_r_LM_M - mr_BM_M_tk)
+            innovation = (landmarkMeas[i,:].flatten() - mzk).reshape((3,1))
             # log innovation
             innObj = LandMarkInnovation()
             innObj.t = measTime
@@ -395,41 +400,43 @@ class EkfPoseEstimator():
             self.innovation_log.append(innObj)
 
             # translation Hx with nx_fullstate columns
-            TBMhat = self.mx_mekf_prior_tk.q_BMref.as_dcm()
+            TBMhat = self.mx_mekf_prior_tk.q_BMref.to_dcm()
             HxTrans = np.hstack((TBMhat, np.zeros((self.nz, 3))))
 
             # MEKF Hx with nx_fullstate columns
+            # skew of mean of mcmf to body frame position
             HxMekf = np.zeros((self.nz,self.nx_mekf))
-            r_LB_B = self.mx_mekf_prior_tk.q_BMref.rotate(r_LB_M[i,:])
-            rx,ry,rz = r_LB_B
-            r_LB_B_skew = np.array([
+
+            mr_BM_B_tk = self.mx_mekf_prior_tk.q_BMref.rotate(mr_BM_M_tk)
+            rx,ry,rz = mr_BM_B_tk
+            mr_BM_B_skew = np.array([
                 [0, -rz, ry],
                 [rz, 0, -rx],
                 [-ry, rx, 0]
             ])
-            r_LM_B = self.mx_mekf_prior_tk.q_BMref.rotate(r_LM_M)
-            rx,ry,rz = r_LM_B
-            r_LM_B_skew = np.array([
+            # skew of landmark in body frame
+            rx,ry,rz = map_r_LM_B
+            map_r_LM_B_skew = np.array([
                 [0, -rz, ry],
                 [rz, 0, -rx],
                 [-ry, rx, 0]
             ])
             
-            HxMekf[:,:3] = r_LM_B_skew - r_LB_B_skew
+            HxMekf[:,:3] = map_r_LM_B_skew - mr_BM_B_skew
 
-            if HxStack == None:
-                HxStack = np.hstack((HxTrans,HxMekf))
-                Pxxk_prior_block = self.mx_full.Pxx
-                PvvStack = self.Pvv
-                innovationsVec = innovation.flatten()
-            else:
+            if HxStack is not None:
                 HxStack = np.vstack((HxStack,
                                     np.hstack((HxTrans,HxMekf))))
                 PvvStack = block_diag(
                     PvvStack,
                     self.Pvv)
-                innovationsVec = np.vstack((innovationsVec, innovation.flatten()))
-
+                innovationsVec = np.vstack((innovationsVec, innovation.reshape(-1,1)))
+            else:
+                HxStack = np.hstack((HxTrans,HxMekf))
+                Pxxk_prior_block = self.mx_full.Pxx
+                PvvStack = self.Pvv
+                innovationsVec = innovation.reshape(-1,1)
+                
         # prepare for kalman update
         Pxxk_prior = self.mx_full.Pxx
         Pxzk = Pxxk_prior @ HxStack.T
@@ -442,7 +449,7 @@ class EkfPoseEstimator():
             self.mx_posVel_prior_tk.Mdrdt_BM_M_mean.flatten(),
             self.mx_mekf_prior_tk.angleError_mean.flatten(),
             self.mx_mekf_prior_tk.gyroBiasError_mean.flatten()
-        ))
+        )).reshape((-1,1))
         
         # kalman update
         mxk_post = mxk_prior + Kk @ innovationsVec
@@ -478,6 +485,10 @@ class EkfPoseEstimator():
         self.mx_posVel_post_tk.t = measTime
         self.mx_mekf_post_tk.t = measTime
         self.mx_full.t = measTime
+        
+        # log updated states
+        self.posVelState_log.append(copy.deepcopy(self.mx_posVel_post_tk))
+        self.mekfState_log.append(copy.deepcopy(self.mx_mekf_post_tk))
 
 
 

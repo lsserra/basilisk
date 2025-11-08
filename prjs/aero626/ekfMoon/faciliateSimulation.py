@@ -51,9 +51,33 @@ def generateLandmarks(
     return trueLandmarks, mapLandmarks
 
 
+# landmark feeding logic
+def getLandmarkMeasurements(mr_BM_M, q_BM_truth, distanceThresholdKm, trueLandmarks):
+    """Pass measurement as the relative position between the true landmark
+      wrt current body est. rotated into the true body frame"""
+    # compute distances from the current position to each landmark
+    relativePositionVectors = trueLandmarks - mr_BM_M
+    distances = np.linalg.norm(relativePositionVectors, axis=1)
 
+    # find landmarks within the distance threshold
+    validLandmarks = trueLandmarks[distances < distanceThresholdKm]
 
-    
+    # ID the landmarks with the row indices
+    landmarkIndices = np.where(distances < distanceThresholdKm)[0]
+
+    outputZkMat = np.zeros((len(validLandmarks), 3))
+
+    for i in range(validLandmarks.shape[0]):
+        # rotate to body frame
+        r_LB_M = validLandmarks[i] - mr_BM_M
+        r_LB_B = q_BM_truth.rotate(r_LB_M).reshape((1, 3))
+
+        outputZkMat[i,:] = r_LB_B
+
+    # get the valid landmark positions
+    outputZkMat = np.hstack((outputZkMat,landmarkIndices.reshape(-1,1)))
+
+    return outputZkMat
 
 ### MCMF propagation ###
 w_MN_M = np.array([0.0, 0.0, 2*np.pi/27.322/24/3600])
@@ -92,7 +116,7 @@ if __name__ == "__main__":
 
     bodyRadius_km = 1737.4
 
-    nLandmarks = 200
+    nLandmarks = 2000
     mapSigma = 1 #km
     
     trueLandmarks,mapLandmarks = generateLandmarks(
@@ -125,8 +149,8 @@ if __name__ == "__main__":
     plt.show()
 
     # save to file
-    # landmarkPicklePath = os.path.join('data', "landmarks.pkl")
-    # with open(landmarkPicklePath, "wb") as f:
-    #     pickle.dump({"trueLandmarks": trueLandmarks, "mapLandmarks": mapLandmarks}, f)
+    landmarkPicklePath = os.path.join('data', "landmarks.pkl")
+    with open(landmarkPicklePath, "wb") as f:
+        pickle.dump({"trueLandmarks": trueLandmarks, "mapLandmarks": mapLandmarks}, f)
 
-    # print(f"Saved trueLandmarks and mapLandmarks to {landmarkPicklePath}")
+    print(f"Saved trueLandmarks and mapLandmarks to {landmarkPicklePath}")

@@ -14,7 +14,7 @@ from EkfPoseEstimator import EkfPosVelState, MekfState, EkfPoseEstimator
 from helpers.attitude import DCM
 from helpers.attitude.Quaternion import Quaternion
 
-from faciliateSimulation import generateLandmarks, propagateMCMF
+from faciliateSimulation import generateLandmarks, propagateMCMF, getLandmarkMeasurements
 
 # Add the basilisk root to the Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
@@ -165,12 +165,21 @@ ekf.initialize(
     QPosVel=Qww_posVel,
     Qmekf=Qmekf) 
 
+## landmark measurement initialization ##
+# measurement noise
+oneSigmaLandmarkMeas = 25 # km
+PvvLM = oneSigmaLandmarkMeas**2 * np.eye(3)
+ekf.Pvv = PvvLM
+# feed map 
+# ekf.loadLandmarkMap(mapLandmarks) 
+ekf.loadLandmarkMap(trueLandmarks) # TODO WARNING passing map = truth
+
 
 
 
 # generate some landmarks
 
-eqRadMoon = 1737.4e3 # km
+eqRadMoon = 1737.4e3 # m
 
 for i, tk in enumerate(timeData):
     if i == 0:
@@ -230,14 +239,34 @@ for i, tk in enumerate(timeData):
     w_BN_B = gyro_meas[i,:]
     ekf.propagate(toTime=tk, w_BN_B_meas=w_BN_B)
 
-    # manually get ready for next time
-    ekf.mx_posVel_prior_tk_ = ekf.mx_posVel_prior_tk
-    ekf.mx_mekf_prior_tk_ = ekf.mx_mekf_prior_tk
+    ### EKF Measurement Update ###
+    # simulate landmark measurements
+    visibleLandmarks = getLandmarkMeasurements(
+        mr_BM_M=ekf.mx_posVel_prior_tk.r_BM_M_mean,
+        q_BM_truth=q_BM_true,
+        distanceThresholdKm=100.0,  #  km
+        trueLandmarks=trueLandmarks
+    )
 
+    if visibleLandmarks.shape[0] > 0:
+        ekf.updateWithLandmarks(visibleLandmarks, measTime=tk)
+    else:
+        # update solution timing 
+        ekf.mx_mekf_post_tk = copy.deepcopy(ekf.mx_mekf_prior_tk)
+        ekf.mx_posVel_post_tk = copy.deepcopy(ekf.mx_posVel_prior_tk)
+        ekf.mx_full.t = tk
+
+        # log data
+        ekf.posVelState_log.append(copy.deepcopy(ekf.mx_posVel_post_tk))
+        ekf.mekfState_log.append(copy.deepcopy(ekf.mx_mekf_post_tk))
+
+
+     # manually get ready for next time
+    ekf.mx_posVel_prior_tk_ = ekf.mx_posVel_post_tk
+    ekf.mx_mekf_prior_tk_ = ekf.mx_mekf_post_tk
 
     ## running error check
-
-    r_error = r_BM_M - ekf.mx_posVel_post_tk.r_BM_M_mean
+    r_error = r_BM_M.reshape(-1,1) - ekf.mx_posVel_post_tk.r_BM_M_mean
     v_error = Mdrdt_BM_M - ekf.mx_posVel_post_tk.Mdrdt_BM_M_mean
     angleDiff = Quaternion.computeEulerVecAttErrorFromQuats(q_ref=q_MN_store[i-1],q_est=q_MN_store[i])
 
