@@ -125,8 +125,8 @@ if __name__ == "__main__":
     plt.show()
 
     # save to file
-    landmarkPicklePath = os.path.join('data', "landmarks.pkl")
-    with open(landmarkPicklePath, "wb") as f:
-        pickle.dump({"trueLandmarks": trueLandmarks, "mapLandmarks": mapLandmarks}, f)
+    # landmarkPicklePath = os.path.join('data', "landmarks.pkl")
+    # with open(landmarkPicklePath, "wb") as f:
+    #     pickle.dump({"trueLandmarks": trueLandmarks, "mapLandmarks": mapLandmarks}, f)
 
-    print(f"Saved trueLandmarks and mapLandmarks to {landmarkPicklePath}")
+    # print(f"Saved trueLandmarks and mapLandmarks to {landmarkPicklePath}")
