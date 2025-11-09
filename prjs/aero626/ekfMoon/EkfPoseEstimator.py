@@ -47,7 +47,7 @@ def EkfPosVelProp(t, x_aug, MU_MOON, w_MN_M, Fw, Qww, nx):
     centripetal = np.cross(w_MN_M, np.cross(w_MN_M, r))
     dr2dt2 = fgrav - coriolis - centripetal
 
-    xdot = np.hstack([rdot, dr2dt2])
+    xdot = np.concatenate((rdot.flatten(), dr2dt2.flatten()), axis=0)
 
     # --- Compute dynamics Jacobian Fx ---
     I3 = np.eye(3)
@@ -59,15 +59,26 @@ def EkfPosVelProp(t, x_aug, MU_MOON, w_MN_M, Fw, Qww, nx):
     F11 = np.zeros((3, 3))
     F12 = np.eye(3)
     F22 = -2 * w_skew
-    F21 = -MU_MOON * (I3 / rnorm**3 - 3 * np.outer(r, r) / rnorm**5)
+    F21 = -MU_MOON * ((I3 / rnorm**3) - ((3 * r @ r.T) / rnorm**5))
     Fx = np.block([[F11, F12],
                    [F21, F22]])
+
+
+                     # Defensive shape checks (will raise helpful errors if wrong)
+    if Fw.ndim != 2:
+        raise ValueError("Fw must be 2D; got shape {}".format(Fw.shape))
+    if Qww.shape[0] != Qww.shape[1]:
+        raise ValueError("Qww must be square")
+    Qterm = Fw @ Qww @ Fw.T
+    if Qterm.shape != (nx, nx):
+        raise ValueError("Process noise term shape mismatch: expected ({},{}) got {}".format(nx, nx, Qterm.shape))
+
 
     # --- Covariance dynamics ---
     Pdot = Fx @ P + P @ Fx.T + Fw @ Qww @ Fw.T
 
     # --- Stack mean and covariance derivatives ---
-    x_aug_dot = np.hstack([xdot, Pdot.flatten()])
+    x_aug_dot = np.concatenate((xdot.flatten(), Pdot.flatten()),axis=0)
 
     return x_aug_dot
 
@@ -128,6 +139,7 @@ class LandMarkInnovation():
     def __init__(self):
         self.t=0.0
         self.innovation = np.zeros((3,1))
+        self.innovationCov = np.zeros((3,3))
         self.landmarkId = -1
 
 
@@ -186,9 +198,9 @@ class EkfPoseEstimator():
             [-wy, wx, 0]
         ])
         # Moon gravitational const
-        self.MU_MOON = 4902.799 # km^3/s^3
-        
-       
+        self.MU_MOON = 4902.799 # km^3/kg/s^2
+
+
 
 
         # --- Logging containers ---
@@ -247,15 +259,15 @@ class EkfPoseEstimator():
         # --- Pos Vel Propagation --- #
         tkm = self.mx_posVel_prior_tk_.t
         Pxx_prior_tk_ = self.mx_posVel_prior_tk_.Pxx
-        xRef_tk_ = np.hstack([
-            self.mx_posVel_prior_tk_.r_BM_M_mean,
-            self.mx_posVel_prior_tk_.Mdrdt_BM_M_mean
-            ]).flatten()
+        xRef_tk_ = np.concatenate((
+            self.mx_posVel_prior_tk_.r_BM_M_mean.flatten(),
+            self.mx_posVel_prior_tk_.Mdrdt_BM_M_mean.flatten()
+            ),axis=0)
 
-        x_aug0 = np.hstack([
-        xRef_tk_,                
+        x_aug0 = np.concatenate((
+        xRef_tk_.flatten(),                
         Pxx_prior_tk_.flatten()  
-        ])
+        ),axis=0)
 
         # propagate the coupled mean and covariance dynamics
         sol = solve_ivp(
@@ -328,7 +340,13 @@ class EkfPoseEstimator():
         FxMekf = np.hstack((-omega_skew,-np.eye(3)))
         FxMekf = np.vstack((FxMekf,np.zeros((3,6))))
         
+
         PxxFlat = self.mx_mekf_prior_tk_.Pxx.flatten()
+
+         # if any non-finite values, skip update
+        if np.any(PxxFlat < 0.0):
+            self._log_outlier(tk, True)
+            return
         
         sol = solve_ivp(
         fun=lambda t,x : MekfCovProp(t,x,
@@ -345,6 +363,12 @@ class EkfPoseEstimator():
         # reshape cov
         x_aug_sol = sol.y 
         PxxMekf_tk = x_aug_sol[:, -1].reshape(self.nx_mekf,self.nx_mekf)
+
+
+         # if any non-finite values, skip update
+        if np.any(PxxMekf_tk.flatten() < 0.0):
+            self._log_outlier(tk, True)
+            return
 
         # update mekf prior state obj at end of prop
         self.mx_mekf_prior_tk.t = tk
@@ -397,32 +421,22 @@ class EkfPoseEstimator():
             innObj.t = measTime
             innObj.innovation = innovation.reshape((3,1))
             innObj.landmarkId = landmarkIds[i]
-            self.innovation_log.append(innObj)
 
             # translation Hx with nx_fullstate columns
             TBMhat = self.mx_mekf_prior_tk.q_BMref.to_dcm()
-            HxTrans = np.hstack((TBMhat, np.zeros((self.nz, 3))))
+            HxTrans = np.hstack((-TBMhat, np.zeros((self.nz, 3))))
 
             # MEKF Hx with nx_fullstate columns
             # skew of mean of mcmf to body frame position
             HxMekf = np.zeros((self.nz,self.nx_mekf))
-
-            mr_BM_B_tk = self.mx_mekf_prior_tk.q_BMref.rotate(mr_BM_M_tk)
-            rx,ry,rz = mr_BM_B_tk
-            mr_BM_B_skew = np.array([
+            r_LB_B = self.mx_mekf_prior_tk.q_BMref.rotate(map_r_LM_M - mr_BM_M_tk)
+            rx,ry,rz = r_LB_B
+            r_LB_B_skew = np.array([
                 [0, -rz, ry],
                 [rz, 0, -rx],
                 [-ry, rx, 0]
             ])
-            # skew of landmark in body frame
-            rx,ry,rz = map_r_LM_B
-            map_r_LM_B_skew = np.array([
-                [0, -rz, ry],
-                [rz, 0, -rx],
-                [-ry, rx, 0]
-            ])
-            
-            HxMekf[:,:3] = map_r_LM_B_skew - mr_BM_B_skew
+            HxMekf[:,:3] = r_LB_B_skew
 
             if HxStack is not None:
                 HxStack = np.vstack((HxStack,
@@ -443,23 +457,27 @@ class EkfPoseEstimator():
         Pzzk = HxStack @ Pxxk_prior @ HxStack.T + PvvStack
         Kk = Pxzk @ linalg.inv(Pzzk)
 
+        # store innovation covariance
+        innObj.innovationCov = Pzzk
+        self.innovation_log.append(innObj)
+
         # create full state 
-        mxk_prior = np.hstack((
+        mxk_prior = np.concatenate((
             self.mx_posVel_prior_tk.r_BM_M_mean.flatten(),
             self.mx_posVel_prior_tk.Mdrdt_BM_M_mean.flatten(),
             self.mx_mekf_prior_tk.angleError_mean.flatten(),
             self.mx_mekf_prior_tk.gyroBiasError_mean.flatten()
-        )).reshape((-1,1))
+        ),axis=0).reshape((-1,1))
         
         # kalman update
         mxk_post = mxk_prior + Kk @ innovationsVec
         Pxxk_post = Pxxk_prior - Pxzk@Kk.T -Kk@Pxzk.T + Kk @ Pzzk @ Kk.T
 
         # unpack updated states
-        self.mx_posVel_post_tk.r_BM_M_mean = mxk_post[:3]
-        self.mx_posVel_post_tk.Mdrdt_BM_M_mean = mxk_post[3:6]
-        self.mx_mekf_post_tk.angleError_mean = mxk_post[6:9]
-        self.mx_mekf_post_tk.gyroBiasError_mean = mxk_post[9:]
+        self.mx_posVel_post_tk.r_BM_M_mean = mxk_post[:3].flatten()
+        self.mx_posVel_post_tk.Mdrdt_BM_M_mean = mxk_post[3:6].flatten()
+        self.mx_mekf_post_tk.angleError_mean = mxk_post[6:9].flatten()
+        self.mx_mekf_post_tk.gyroBiasError_mean = mxk_post[9:].flatten()
 
         self.mx_posVel_post_tk.Pxx = Pxxk_post[:6,:6]
         self.mx_mekf_post_tk.Pxx = Pxxk_post[6:,6:]
@@ -467,15 +485,20 @@ class EkfPoseEstimator():
         # update full state covariance
         self.mx_full.Pxx = Pxxk_post
 
+         # if any non-finite values, skip update
+        if np.any(self.mx_full.Pxx.flatten() < 0.0):
+            self._log_outlier(measTime, True)
+            return
+
         # add attitude error correction to nominal quaternion
         q_err = Quaternion(qv=self.mx_mekf_post_tk.angleError_mean.flatten(),
                            q0=1.0)
         q_BM_post = (q_err*self.mx_mekf_prior_tk.q_BMref).normalize()
         self.mx_mekf_post_tk.q_BMref = q_BM_post
         # add gyro bias error correction to nominal bias
-        gyroBias_post = (self.mx_mekf_prior_tk.gyroBiasRef +
-                         self.mx_mekf_post_tk.gyroBiasError_mean)
-        self.mx_mekf_post_tk.gyroBiasRef = gyroBias_post
+        gyroBias_post = (self.mx_mekf_prior_tk.gyroBiasRef.flatten() +
+                         self.mx_mekf_post_tk.gyroBiasError_mean.flatten())
+        self.mx_mekf_post_tk.gyroBiasRef = gyroBias_post.flatten()
 
         # set error state to 0
         self.mx_mekf_post_tk.angleError_mean = np.zeros((3,1))

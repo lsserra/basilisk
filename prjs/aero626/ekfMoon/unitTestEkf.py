@@ -40,6 +40,31 @@ q_BN_truth = sim_data["q_BN_truth"]
 
 print("Simulation data successfully unboxed.")
 
+## limit sim time for testing ##
+# idxCap = 25
+idxCap = 700
+if idxCap is not None:
+    timeData = timeData[:idxCap]
+    sc_pos = sc_pos[:idxCap,:]
+    sc_vel = sc_vel[:idxCap,:]
+    moon_pos = moon_pos[:idxCap,:]
+    moon_vel = moon_vel[:idxCap,:]
+    gyro_meas = gyro_meas[:idxCap,:]
+    gyro_time = gyro_time[:idxCap]
+    q_BN_truth = q_BN_truth[:idxCap]
+    print(f"Simulation data truncated to {idxCap} steps for testing.")
+
+
+## set measurement update at _ Hz ##
+measFreq = 1.0 # Hz
+simdt = timeData[1] - timeData[0]
+measDt = 1.0 / measFreq
+simIterPublishMeasBound = int(np.round(measDt / simdt))
+measCounter = 0
+
+
+
+
 
 
 with open("data/landmarks.pkl", "rb") as f:
@@ -106,8 +131,8 @@ nz = 3
 # ekf object
 ekf = EkfPoseEstimator()
 # Process Noise
-psd_r = 0.01 # 
-psd_Mdrdt = 0.001 # 
+psd_r = 1. # 
+psd_Mdrdt = 0.1 # 
 Qww_posVel = np.diag([psd_r,psd_r,psd_r,psd_Mdrdt,psd_Mdrdt,psd_Mdrdt])
 
 
@@ -116,8 +141,8 @@ Qww_posVel = np.diag([psd_r,psd_r,psd_r,psd_Mdrdt,psd_Mdrdt,psd_Mdrdt])
 t0 = timeData[0]
 
 # covariance 
-sigma_r = 0.1 # m
-sigma_Mdrdt = 0.01 # m/s
+sigma_r = 5. # km
+sigma_Mdrdt = 1. # km/s
 
 ## Initial Pos Vel state obj ##
 posVelState0 = EkfPosVelState(nx=nx)
@@ -144,18 +169,21 @@ q_BM_true_0 = q_BN_0*q_NM_0
 mekfState0.q_BMref = q_BM_true_0
 
 # covariance
-sigmaAtt = np.deg2rad(5.)
-sigmaGyroBias = np.deg2rad(1.)
+# sigmaAtt = np.deg2rad(5.) # deg -> rad
+# sigmaGyroBias = np.deg2rad(.1) # deg/s -> rad/s
+
+sigmaAtt = 9.4e-6 # rad^2
+sigmaGyroBias = 9.4e-13 # rad^2/s^2
 Pxx0 = block_diag(sigmaAtt*np.eye(3),sigmaGyroBias*np.eye(3))
-Pxx0 = Pxx0@Pxx0.T
+# Pxx0 = Pxx0@Pxx0.T
 mekfState0.Pxx = Pxx0
 
 # time
 mekfState0.t = t0
 
 # process noise
-Qmekf = 0.00000 * np.eye(6) # TODO check!
 
+Qmekf = 0.0000 * np.eye(6) # TODO check!
 
 
 # pass IC's, process noise PSD to filter
@@ -177,10 +205,7 @@ ekf.loadLandmarkMap(trueLandmarks) # TODO WARNING passing map = truth
 
 
 
-# generate some landmarks
-
-eqRadMoon = 1737.4e3 # m
-
+# main sim loop
 for i, tk in enumerate(timeData):
     if i == 0:
         
@@ -240,17 +265,20 @@ for i, tk in enumerate(timeData):
     ekf.propagate(toTime=tk, w_BN_B_meas=w_BN_B)
 
     ### EKF Measurement Update ###
-    # simulate landmark measurements
-    visibleLandmarks = getLandmarkMeasurements(
-        mr_BM_M=ekf.mx_posVel_prior_tk.r_BM_M_mean,
-        q_BM_truth=q_BM_true,
-        distanceThresholdKm=100.0,  #  km
-        trueLandmarks=trueLandmarks
-    )
-
-    if visibleLandmarks.shape[0] > 0:
-        ekf.updateWithLandmarks(visibleLandmarks, measTime=tk)
-    else:
+    measCounter += 1
+    didUpdate = False
+    if measCounter >= simIterPublishMeasBound:
+        measCounter = 0
+        visibleLandmarks = getLandmarkMeasurements(
+            r_BM_M_truth=r_BM_M,
+            q_BM_truth=q_BM_true,
+            distanceThresholdKm=100.0,  #  km
+            trueLandmarks=trueLandmarks
+        )
+        if visibleLandmarks.shape[0] > 0:
+            ekf.updateWithLandmarks(visibleLandmarks, measTime=tk)
+            didUpdate = True
+    if not didUpdate:
         # update solution timing 
         ekf.mx_mekf_post_tk = copy.deepcopy(ekf.mx_mekf_prior_tk)
         ekf.mx_posVel_post_tk = copy.deepcopy(ekf.mx_posVel_prior_tk)
@@ -261,7 +289,7 @@ for i, tk in enumerate(timeData):
         ekf.mekfState_log.append(copy.deepcopy(ekf.mx_mekf_post_tk))
 
 
-     # manually get ready for next time
+    # manually get ready for next time
     ekf.mx_posVel_prior_tk_ = ekf.mx_posVel_post_tk
     ekf.mx_mekf_prior_tk_ = ekf.mx_mekf_post_tk
 
@@ -269,7 +297,10 @@ for i, tk in enumerate(timeData):
     r_error = r_BM_M.reshape(-1,1) - ekf.mx_posVel_post_tk.r_BM_M_mean
     v_error = Mdrdt_BM_M - ekf.mx_posVel_post_tk.Mdrdt_BM_M_mean
     angleDiff = Quaternion.computeEulerVecAttErrorFromQuats(q_ref=q_MN_store[i-1],q_est=q_MN_store[i])
-
+    runningAttError = Quaternion.computeEulerVecAttErrorFromQuats(
+        q_ref=Quaternion.from_array(q_BM_store[i]),
+        q_est=ekf.mx_mekf_post_tk.q_BMref
+    )
     foo=1
 
 
@@ -291,9 +322,17 @@ Pxx_list = [s.Pxx for s in posVelStateList]
 P_diag_posVel = np.array([np.diag(P) for P in Pxx_list])
 sigma3_posVel = 3 * np.sqrt(P_diag_posVel)
 
+
+
 # Extract reference state
-r_filt = np.array([xref.r_BM_M_mean for xref in posVelStateList])
-v_filt = np.array([xref.Mdrdt_BM_M_mean for xref in posVelStateList])
+r_filt = np.vstack([
+    np.array(xref.r_BM_M_mean).reshape(1, -1)
+    for xref in posVelStateList
+])
+v_filt = np.vstack([
+    np.array(xref.Mdrdt_BM_M_mean).reshape(1, -1)
+    for xref in posVelStateList
+])
 
 # Extract true state
 r_truth = np.array(r_BM_M_TruthStore)
@@ -304,6 +343,10 @@ r_true_interp = r_interp_truth(t_filt)
 
 v_interp_truth = interp1d(timeData, v_truth, axis=0)
 v_true_interp = v_interp_truth(t_filt)
+
+mask = np.any(P_diag_posVel < 0., axis=1)
+bad_times = t_filt[mask]
+
 
 
 # Compute estimation error
@@ -329,10 +372,13 @@ Pxx_list = [s.Pxx for s in mekfStateList]
 P_diag_mekf = np.array([np.diag(P) for P in Pxx_list])
 sigma3_mekf = 3 * np.sqrt(P_diag_mekf)
 
+
 # Extract reference state
 q_BM_filt_list = np.array([mx.q_BMref for mx in mekfStateList])
-gyroBias_filt_array = np.array([mx.gyroBiasRef for mx in mekfStateList])
-
+gyroBias_filt_array = np.vstack([
+    np.array(xref.gyroBiasRef).reshape(1, -1)
+    for xref in mekfStateList
+])
 # interpolate truth solution
 q_BM_truth_array = np.array(q_BM_store)
 q_BM_interp1dObj_truth = interp1d(timeData, q_BM_truth_array, axis=0)

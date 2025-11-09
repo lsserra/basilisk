@@ -81,7 +81,7 @@ class Quaternion:
             [qz, 0, -qx],
             [-qy, qx, 0]
         ])
-        return I - 2*q0*qx_skew + 2*np.outer(qv, qv)
+        return I - 2*q0*qx_skew + 2*np.linalg.matrix_power(qx_skew, 2)
 
     # --- Rotation of Vectors ---
 

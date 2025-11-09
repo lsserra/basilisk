@@ -52,11 +52,11 @@ def generateLandmarks(
 
 
 # landmark feeding logic
-def getLandmarkMeasurements(mr_BM_M, q_BM_truth, distanceThresholdKm, trueLandmarks):
+def getLandmarkMeasurements(r_BM_M_truth, q_BM_truth, distanceThresholdKm, trueLandmarks):
     """Pass measurement as the relative position between the true landmark
-      wrt current body est. rotated into the true body frame"""
+      wrt true body position rotated into the true body frame"""
     # compute distances from the current position to each landmark
-    relativePositionVectors = trueLandmarks - mr_BM_M
+    relativePositionVectors = trueLandmarks - r_BM_M_truth
     distances = np.linalg.norm(relativePositionVectors, axis=1)
 
     # find landmarks within the distance threshold
@@ -69,7 +69,7 @@ def getLandmarkMeasurements(mr_BM_M, q_BM_truth, distanceThresholdKm, trueLandma
 
     for i in range(validLandmarks.shape[0]):
         # rotate to body frame
-        r_LB_M = validLandmarks[i] - mr_BM_M
+        r_LB_M = validLandmarks[i] - r_BM_M_truth
         r_LB_B = q_BM_truth.rotate(r_LB_M).reshape((1, 3))
 
         outputZkMat[i,:] = r_LB_B

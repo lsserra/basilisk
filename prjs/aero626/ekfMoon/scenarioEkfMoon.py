@@ -59,7 +59,7 @@ def run(showPlots, savePkl, EarthAndMoonGrav):
     dynProcess = scSim.CreateNewProcess(simProcessName)
 
     # create the dynamics task and specify the integration update time
-    simulationTimeStep = macros.sec2nano(10.)
+    simulationTimeStep = macros.sec2nano(.1)
     dynProcess.addTask(scSim.CreateNewTask(simTaskName, simulationTimeStep))
 
     # setup the simulation tasks/objects
@@ -140,7 +140,7 @@ def run(showPlots, savePkl, EarthAndMoonGrav):
     # set the simulation time
     n = np.sqrt(moonBody.mu / oe.a / oe.a / oe.a)
     P = 2. * np.pi / n
-    simulationTime = macros.sec2nano(.25*P)
+    simulationTime = macros.sec2nano(.1*P)
     # Setup data logging
     numDataPoints = np.round(simulationTime/simulationTimeStep)
     samplingTime = unitTestSupport.samplingTime(simulationTime, simulationTimeStep, numDataPoints)
