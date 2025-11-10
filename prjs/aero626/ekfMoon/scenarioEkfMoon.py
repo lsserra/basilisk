@@ -153,14 +153,18 @@ def run(showPlots, savePkl, EarthAndMoonGrav):
     
     # Configure gyro noise (rad/s)
     # imu.senRotBias = np.array([0.,0.,0.])
-    senRotNoiseStd = 0.0000 # rad/s
+    senRotNoiseStd = np.sqrt(10)*10**(-7) # rad/sec^(3/2)
     walkBound = 0.01 # rad/s
     PMatrix = np.eye(3)* senRotNoiseStd**2 # cholesky defactorization of noise covariance matrix, drives Gauss Markov Process
-    # L = np.linalg.cholesky(PMatrix)
-    L = np.zeros((3,3))
+    L = np.linalg.cholesky(PMatrix)
+    # L = np.zeros((3,3))
     imu.PMatrixGyro = L
     AMatrixGyro = np.zeros((3,3))
-    imu.AMatrixGyro = AMatrixGyro
+
+    senWalkNoiseStd = np.sqrt(10)*10**(-10) # rad/sec^(3/2)
+    AMatrixGyro = np.eye(3)* senWalkNoiseStd**2 # cholesky defactorization of noise covariance matrix, drives Gauss Markov Process
+    L = np.linalg.cholesky(AMatrixGyro)
+    imu.AMatrixGyro = L
     imu.setErrorBoundsGyro([walkBound, walkBound, walkBound])
     imu.scStateInMsg.subscribeTo(scObject.scStateOutMsg)
     # Add IMU to simulation

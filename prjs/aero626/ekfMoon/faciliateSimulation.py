@@ -117,7 +117,7 @@ if __name__ == "__main__":
     bodyRadius_km = 1737.4
 
     nLandmarks = 2000
-    mapSigma = 1 #km
+    mapSigma = .01 #km
     
     trueLandmarks,mapLandmarks = generateLandmarks(
         randomSeed=rng,

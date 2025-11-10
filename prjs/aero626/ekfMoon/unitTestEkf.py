@@ -42,7 +42,8 @@ print("Simulation data successfully unboxed.")
 
 ## limit sim time for testing ##
 # idxCap = 25
-idxCap = 700
+# idxCap = 700
+idxCap = 1500
 if idxCap is not None:
     timeData = timeData[:idxCap]
     sc_pos = sc_pos[:idxCap,:]
@@ -131,8 +132,8 @@ nz = 3
 # ekf object
 ekf = EkfPoseEstimator()
 # Process Noise
-psd_r = 1. # 
-psd_Mdrdt = 0.1 # 
+psd_r = .1 # 
+psd_Mdrdt = 0.01 # 
 Qww_posVel = np.diag([psd_r,psd_r,psd_r,psd_Mdrdt,psd_Mdrdt,psd_Mdrdt])
 
 
@@ -169,13 +170,14 @@ q_BM_true_0 = q_BN_0*q_NM_0
 mekfState0.q_BMref = q_BM_true_0
 
 # covariance
-# sigmaAtt = np.deg2rad(5.) # deg -> rad
-# sigmaGyroBias = np.deg2rad(.1) # deg/s -> rad/s
-
-sigmaAtt = 9.4e-6 # rad^2
-sigmaGyroBias = 9.4e-13 # rad^2/s^2
+sigmaAtt = np.deg2rad(.1) # deg -> rad
+sigmaGyroBias = np.deg2rad(.2)/3600 # deg/hr -> rad/s
 Pxx0 = block_diag(sigmaAtt*np.eye(3),sigmaGyroBias*np.eye(3))
-# Pxx0 = Pxx0@Pxx0.T
+Pxx0 = Pxx0@Pxx0.T
+
+# sigmaAtt = 9.4e-6 # rad^2
+# sigmaGyroBias = 9.4e-13 # rad^2/s^2
+# Pxx0 = block_diag(sigmaAtt*np.eye(3),sigmaGyroBias*np.eye(3))
 mekfState0.Pxx = Pxx0
 
 # time
@@ -183,7 +185,7 @@ mekfState0.t = t0
 
 # process noise
 
-Qmekf = 0.0000 * np.eye(6) # TODO check!
+Qmekf = 1e-12 * np.eye(6) # TODO check!
 
 
 # pass IC's, process noise PSD to filter
@@ -195,13 +197,13 @@ ekf.initialize(
 
 ## landmark measurement initialization ##
 # measurement noise
-oneSigmaLandmarkMeas = 25 # km
+oneSigmaLandmarkMeas = 5 # km
 PvvLM = oneSigmaLandmarkMeas**2 * np.eye(3)
 ekf.Pvv = PvvLM
 # feed map 
 # ekf.loadLandmarkMap(mapLandmarks) 
-ekf.loadLandmarkMap(trueLandmarks) # TODO WARNING passing map = truth
-
+# ekf.loadLandmarkMap(trueLandmarks) # TODO WARNING passing map = truth
+ekf.loadLandmarkMap(mapLandmarks)
 
 
 
@@ -370,6 +372,8 @@ print(f"Final v Error = {velocityError[-1,:]} [km/s]")
 t_filt = np.array([s.t for s in mekfStateList])
 Pxx_list = [s.Pxx for s in mekfStateList]
 P_diag_mekf = np.array([np.diag(P) for P in Pxx_list])
+# convert to deg
+P_diag_mekf = np.rad2deg(np.rad2deg(P_diag_mekf))
 sigma3_mekf = 3 * np.sqrt(P_diag_mekf)
 
 
@@ -452,8 +456,8 @@ gryo_labels = ['X', 'Y', 'Z']
 # Position error plots
 for i in range(3):
     axs[i, 0].plot(t_filt, np.rad2deg(PRV_BprimeB_array[:, i]), 'k-', linewidth=1.8, label=f'{body_labels[i]}')
-    axs[i, 0].plot(t_filt, np.rad2deg(sigma3_mekf[:, i]), 'r--', linewidth=1)
-    axs[i, 0].plot(t_filt, np.rad2deg(-sigma3_mekf[:, i]), 'r--', linewidth=1, label='±3σ confidence')
+    axs[i, 0].plot(t_filt, (sigma3_mekf[:, i]), 'r--', linewidth=1)
+    axs[i, 0].plot(t_filt, (-sigma3_mekf[:, i]), 'r--', linewidth=1, label='±3σ confidence')
     axs[i, 0].set_ylabel(f'Body Frame {body_labels[i]} Error [deg]')
     axs[i, 0].grid(True)
     axs[i, 0].legend(loc='upper right')
@@ -462,8 +466,8 @@ for i in range(3):
 # Velocity error plots
 for i in range(3):
     axs[i, 1].plot(t_filt, np.rad2deg(gyroBiasError_array[:,i]), 'k-', linewidth=1.8, label=f'{body_labels[i]}')
-    axs[i, 1].plot(t_filt, np.rad2deg(sigma3_mekf[:, 3 + i]), 'r--', linewidth=1)
-    axs[i, 1].plot(t_filt, np.rad2deg(-sigma3_mekf[:, 3 + i]), 'r--', linewidth=1,label='±3σ confidence')
+    axs[i, 1].plot(t_filt, (sigma3_mekf[:, 3 + i]), 'r--', linewidth=1)
+    axs[i, 1].plot(t_filt, (-sigma3_mekf[:, 3 + i]), 'r--', linewidth=1,label='±3σ confidence')
     axs[i, 1].set_ylabel(f'Gyro Frame {body_labels[i]} Bias Error [deg/s]')
     axs[i, 1].grid(True)
     axs[i, 1].legend(loc='upper right')

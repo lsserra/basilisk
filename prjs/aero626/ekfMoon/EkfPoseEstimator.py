@@ -299,6 +299,11 @@ class EkfPoseEstimator():
         self.mx_posVel_prior_tk.Pxx = Pxx_sol_tk
 
 
+         # if any non-finite values, skip update
+        if np.any(Pxx_sol_tk[np.diag_indices_from(Pxx_sol_tk)] < 0.0):
+            self._log_outlier(tk, True)
+            
+
         # --- MEKF Propagation --- #
         # ensure time is aligned with pos/vel
         tkm_mekf = self.mx_mekf_prior_tk_.t
@@ -342,11 +347,6 @@ class EkfPoseEstimator():
         
 
         PxxFlat = self.mx_mekf_prior_tk_.Pxx.flatten()
-
-         # if any non-finite values, skip update
-        if np.any(PxxFlat < 0.0):
-            self._log_outlier(tk, True)
-            return
         
         sol = solve_ivp(
         fun=lambda t,x : MekfCovProp(t,x,
@@ -364,11 +364,12 @@ class EkfPoseEstimator():
         x_aug_sol = sol.y 
         PxxMekf_tk = x_aug_sol[:, -1].reshape(self.nx_mekf,self.nx_mekf)
 
+        
 
-         # if any non-finite values, skip update
-        if np.any(PxxMekf_tk.flatten() < 0.0):
+          # if any non-finite values, skip update
+        if np.any(PxxMekf_tk[np.diag_indices_from(PxxMekf_tk)] < 0.0):
             self._log_outlier(tk, True)
-            return
+            
 
         # update mekf prior state obj at end of prop
         self.mx_mekf_prior_tk.t = tk
@@ -409,7 +410,7 @@ class EkfPoseEstimator():
 
             # get map landmark position
             map_r_LM_M = self.landmarkMap[landmarkIds[i],:].flatten()
-            map_r_LM_B= self.mx_mekf_post_tk.q_BMref.rotate(
+            map_r_LM_B= self.mx_mekf_prior_tk.q_BMref.rotate(
                 map_r_LM_M
             ) 
 
@@ -429,14 +430,21 @@ class EkfPoseEstimator():
             # MEKF Hx with nx_fullstate columns
             # skew of mean of mcmf to body frame position
             HxMekf = np.zeros((self.nz,self.nx_mekf))
-            r_LB_B = self.mx_mekf_prior_tk.q_BMref.rotate(map_r_LM_M - mr_BM_M_tk)
-            rx,ry,rz = r_LB_B
-            r_LB_B_skew = np.array([
+            rx,ry,rz = TBMhat@map_r_LM_M
+            map_r_LM_B_skew = np.array([
                 [0, -rz, ry],
                 [rz, 0, -rx],
                 [-ry, rx, 0]
             ])
-            HxMekf[:,:3] = r_LB_B_skew
+            rx,ry,rz = TBMhat@mr_BM_M_tk
+            mr_BM_B_tk_skew = np.array([
+                [0, -rz, ry],
+                [rz, 0, -rx],
+                [-ry, rx, 0]
+            ])
+            HxMekf[:,:3] = map_r_LM_B_skew - mr_BM_B_tk_skew
+
+            
 
             if HxStack is not None:
                 HxStack = np.vstack((HxStack,
@@ -447,14 +455,13 @@ class EkfPoseEstimator():
                 innovationsVec = np.vstack((innovationsVec, innovation.reshape(-1,1)))
             else:
                 HxStack = np.hstack((HxTrans,HxMekf))
-                Pxxk_prior_block = self.mx_full.Pxx
                 PvvStack = self.Pvv
                 innovationsVec = innovation.reshape(-1,1)
                 
         # prepare for kalman update
         Pxxk_prior = self.mx_full.Pxx
         Pxzk = Pxxk_prior @ HxStack.T
-        Pzzk = HxStack @ Pxxk_prior @ HxStack.T + PvvStack
+        Pzzk = (HxStack @ Pxxk_prior @ (HxStack.T)) + PvvStack
         Kk = Pxzk @ linalg.inv(Pzzk)
 
         # store innovation covariance
@@ -471,7 +478,7 @@ class EkfPoseEstimator():
         
         # kalman update
         mxk_post = mxk_prior + Kk @ innovationsVec
-        Pxxk_post = Pxxk_prior - Pxzk@Kk.T -Kk@Pxzk.T + Kk @ Pzzk @ Kk.T
+        Pxxk_post = Pxxk_prior - Pxzk@Kk.T - Kk@Pxzk.T + Kk @ Pzzk @ Kk.T
 
         # unpack updated states
         self.mx_posVel_post_tk.r_BM_M_mean = mxk_post[:3].flatten()
@@ -486,9 +493,9 @@ class EkfPoseEstimator():
         self.mx_full.Pxx = Pxxk_post
 
          # if any non-finite values, skip update
-        if np.any(self.mx_full.Pxx.flatten() < 0.0):
+        if np.any(self.mx_full.Pxx[np.diag_indices_from(self.mx_full.Pxx)] < 0.0):
             self._log_outlier(measTime, True)
-            return
+            
 
         # add attitude error correction to nominal quaternion
         q_err = Quaternion(qv=self.mx_mekf_post_tk.angleError_mean.flatten(),
