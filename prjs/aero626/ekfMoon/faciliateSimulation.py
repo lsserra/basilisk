@@ -50,34 +50,76 @@ def generateLandmarks(
 
     return trueLandmarks, mapLandmarks
 
+def getLandmarkMeasurements(
+    r_BM_M_truth,
+    q_BM_truth,
+    distanceThresholdKm,
+    trueLandmarks,
+    measurement1sigma,
+    halfAngleDeg=20.0,      # cone half-angle (degrees)
+    randomSeed=None
+):
+    """
+    Generate landmark measurements within a given distance AND within a viewing cone.
+    Cone Axis is assumed to be nadir pointing.
 
-# landmark feeding logic
-def getLandmarkMeasurements(r_BM_M_truth, q_BM_truth, distanceThresholdKm, trueLandmarks):
-    """Pass measurement as the relative position between the true landmark
-      wrt true body position rotated into the true body frame"""
-    # compute distances from the current position to each landmark
-    relativePositionVectors = trueLandmarks - r_BM_M_truth
-    distances = np.linalg.norm(relativePositionVectors, axis=1)
+    Args:
+        r_BM_M_truth (np.ndarray): True body position in M frame (3,)
+        q_BM_truth (Quaternion): True quaternion body-to-M frame
+        distanceThresholdKm (float): Max distance to consider [km]
+        trueLandmarks (np.ndarray): Nx3 array of landmark positions [km]
+        measurement1sigma (float): Std dev of measurement noise [km]
+        halfAngleDeg (float): Half-angle of visibility cone [deg]
+        randomSeed (int, optional): RNG seed
 
-    # find landmarks within the distance threshold
-    validLandmarks = trueLandmarks[distances < distanceThresholdKm]
+    Returns:
+        outputZkMat (np.ndarray): [n_visible x 4] matrix [x_B, y_B, z_B, landmarkID]
+    """
 
-    # ID the landmarks with the row indices
-    landmarkIndices = np.where(distances < distanceThresholdKm)[0]
+    if randomSeed is not None:
+        np.random.seed(randomSeed)
+    rng = np.random.default_rng()
 
-    outputZkMat = np.zeros((len(validLandmarks), 3))
+    # Compute relative position vectors in M frame
+    r_LB_M = trueLandmarks - r_BM_M_truth
+    distances = np.linalg.norm(r_LB_M, axis=1)
 
-    for i in range(validLandmarks.shape[0]):
-        # rotate to body frame
-        r_LB_M = validLandmarks[i] - r_BM_M_truth
-        r_LB_B = q_BM_truth.rotate(r_LB_M).reshape((1, 3))
+    # Filter by distance
+    withinDistance = distances < distanceThresholdKm
+    r_LB_M = r_LB_M[withinDistance]
+    landmarkIndices = np.where(withinDistance)[0]
 
-        outputZkMat[i,:] = r_LB_B
+    if r_LB_M.shape[0] == 0:
+        return np.empty((0, 4))
 
-    # get the valid landmark positions
-    outputZkMat = np.hstack((outputZkMat,landmarkIndices.reshape(-1,1)))
+    # Rotate relative vectors into the body frame
+    r_LB_B = np.array([q_BM_truth.rotate(vec) for vec in r_LB_M])
+
+    # Normalize and find cone angles
+    r_hat_B = r_LB_B / np.linalg.norm(r_LB_B, axis=1, keepdims=True)
+    coneAxis_M = -r_BM_M_truth 
+    coneAxis_B = q_BM_truth.rotate(coneAxis_M)
+    coneAxis_B = coneAxis_B / np.linalg.norm(coneAxis_B)
+    cosAngles = r_hat_B @ coneAxis_B
+    halfAngleRad = np.deg2rad(halfAngleDeg)
+
+    # Filter by cone
+    cosAngles = np.clip(cosAngles, -1.0, 1.0)
+    withinCone = np.acos(cosAngles) < halfAngleRad
+
+    r_LB_B_visible = r_LB_B[withinCone]
+    visibleIndices = landmarkIndices[withinCone]
+
+    # Add measurement noise
+    noisyMeasurements = rng.normal(
+        loc=r_LB_B_visible, scale=measurement1sigma, size=r_LB_B_visible.shape
+    )
+
+    # Append landmark indices
+    outputZkMat = np.hstack((noisyMeasurements, visibleIndices.reshape(-1, 1)))
 
     return outputZkMat
+
 
 ### MCMF propagation ###
 w_MN_M = np.array([0.0, 0.0, 2*np.pi/27.322/24/3600])
@@ -116,7 +158,7 @@ if __name__ == "__main__":
 
     bodyRadius_km = 1737.4
 
-    nLandmarks = 2000
+    nLandmarks = 10000
     mapSigma = .01 #km
     
     trueLandmarks,mapLandmarks = generateLandmarks(

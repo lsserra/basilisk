@@ -20,6 +20,8 @@ from faciliateSimulation import generateLandmarks, propagateMCMF, getLandmarkMea
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
 
 
+# initalize random seed 
+random_seed = np.random.seed(42)
 
 
 with open("data/MoonCentralBody_MoonGrav.pkl", "rb") as f:
@@ -197,13 +199,15 @@ ekf.initialize(
 
 ## landmark measurement initialization ##
 # measurement noise
-oneSigmaLandmarkMeas = 5 # km
+oneSigmaLandmarkMeas = 0.5 # km
+relativeDistanceThresholdKm = 10. # km
+halfAngleConeFOVdeg = 70.
 PvvLM = oneSigmaLandmarkMeas**2 * np.eye(3)
 ekf.Pvv = PvvLM
 # feed map 
 # ekf.loadLandmarkMap(mapLandmarks) 
-# ekf.loadLandmarkMap(trueLandmarks) # TODO WARNING passing map = truth
-ekf.loadLandmarkMap(mapLandmarks)
+ekf.loadLandmarkMap(trueLandmarks) # TODO WARNING passing map = truth
+# ekf.loadLandmarkMap(mapLandmarks)
 
 
 
@@ -274,8 +278,11 @@ for i, tk in enumerate(timeData):
         visibleLandmarks = getLandmarkMeasurements(
             r_BM_M_truth=r_BM_M,
             q_BM_truth=q_BM_true,
-            distanceThresholdKm=100.0,  #  km
-            trueLandmarks=trueLandmarks
+            distanceThresholdKm=relativeDistanceThresholdKm,  #  km
+            trueLandmarks=trueLandmarks,
+            measurement1sigma=oneSigmaLandmarkMeas,
+            randomSeed=random_seed,
+            halfAngleDeg=halfAngleConeFOVdeg
         )
         if visibleLandmarks.shape[0] > 0:
             ekf.updateWithLandmarks(visibleLandmarks, measTime=tk)
