@@ -101,11 +101,11 @@ def getLandmarkMeasurements(
     coneAxis_B = q_BM_truth.rotate(coneAxis_M)
     coneAxis_B = coneAxis_B / np.linalg.norm(coneAxis_B)
     cosAngles = r_hat_B @ coneAxis_B
-    halfAngleRad = np.deg2rad(halfAngleDeg)
 
     # Filter by cone
-    cosAngles = np.clip(cosAngles, -1.0, 1.0)
-    withinCone = np.acos(cosAngles) < halfAngleRad
+    cosHalfAngle = np.cos(np.deg2rad(halfAngleDeg))
+    withinCone = cosAngles > cosHalfAngle
+
 
     r_LB_B_visible = r_LB_B[withinCone]
     visibleIndices = landmarkIndices[withinCone]
@@ -158,7 +158,7 @@ if __name__ == "__main__":
 
     bodyRadius_km = 1737.4
 
-    nLandmarks = 10000
+    nLandmarks = 50000
     mapSigma = .01 #km
     
     trueLandmarks,mapLandmarks = generateLandmarks(

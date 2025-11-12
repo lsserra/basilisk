@@ -406,6 +406,14 @@ class EkfPoseEstimator():
         PvvStack = None
         mzkStack = None
         innovationsVec = None
+
+        # create innovation objects list
+        innObjList = []
+        for i in range(z_meas_matrix.shape[0]):
+            innObjList.append(copy.deepcopy(LandMarkInnovation()))
+
+
+
         for i in range(z_meas_matrix.shape[0]):
 
             # get map landmark position
@@ -418,7 +426,7 @@ class EkfPoseEstimator():
             mzk = self.mx_mekf_prior_tk.q_BMref.rotate(map_r_LM_M - mr_BM_M_tk)
             innovation = (landmarkMeas[i,:].flatten() - mzk).reshape((3,1))
             # log innovation
-            innObj = LandMarkInnovation()
+            innObj = innObjList[i]
             innObj.t = measTime
             innObj.innovation = innovation.reshape((3,1))
             innObj.landmarkId = landmarkIds[i]
@@ -465,8 +473,12 @@ class EkfPoseEstimator():
         Kk = Pxzk @ linalg.inv(Pzzk)
 
         # store innovation covariance
-        innObj.innovationCov = Pzzk
-        self.innovation_log.append(innObj)
+        block_size = self.nz
+        for i, innObj in enumerate(innObjList):
+            start = i * block_size
+            stop = start + block_size
+            innObj.innovationCov = Pzzk[start:stop, start:stop]
+            self.innovation_log.append(copy.deepcopy(innObj))
 
         # create full state 
         mxk_prior = np.concatenate((

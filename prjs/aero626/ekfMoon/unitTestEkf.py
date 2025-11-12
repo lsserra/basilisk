@@ -15,6 +15,7 @@ from helpers.attitude import DCM
 from helpers.attitude.Quaternion import Quaternion
 
 from faciliateSimulation import generateLandmarks, propagateMCMF, getLandmarkMeasurements
+from PlottingAnalysisTools import plot_landmark_innovations
 
 # Add the basilisk root to the Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
@@ -44,8 +45,9 @@ print("Simulation data successfully unboxed.")
 
 ## limit sim time for testing ##
 # idxCap = 25
-# idxCap = 700
-idxCap = 1500
+idxCap = 700
+# idxCap = 1500
+# idxCap = None
 if idxCap is not None:
     timeData = timeData[:idxCap]
     sc_pos = sc_pos[:idxCap,:]
@@ -199,9 +201,9 @@ ekf.initialize(
 
 ## landmark measurement initialization ##
 # measurement noise
-oneSigmaLandmarkMeas = 0.5 # km
-relativeDistanceThresholdKm = 10. # km
-halfAngleConeFOVdeg = 70.
+oneSigmaLandmarkMeas = 1.0 # km
+relativeDistanceThresholdKm = 100. # km
+halfAngleConeFOVdeg = 85.
 PvvLM = oneSigmaLandmarkMeas**2 * np.eye(3)
 ekf.Pvv = PvvLM
 # feed map 
@@ -363,7 +365,7 @@ positionError = r_true_interp - r_filt
 velocityError = v_true_interp - v_filt
 nSolutions = len(r_filt)
 
-print(f"Final r Error = {positionError[-1,:]} [km/s]")
+print(f"Final r Error = {positionError[-1,:]} [km]")
 print(f"Final v Error = {velocityError[-1,:]} [km/s]")
 
 
@@ -485,6 +487,31 @@ axs[-1, 1].set_xlabel('Time [s]')
 fig.suptitle(f"MEKF Estimation Errors ±3σ\n{nSolutions} EKF Steps", fontsize=14)
 
 plt.tight_layout(rect=[0, 0, 1, 0.95])
+
+
+
+for i, entry in enumerate(ekf.innovation_log):
+    cov = np.array(entry.innovationCov)
+    innov = np.array(entry.innovation)
+
+    # Check for bad shapes
+    if cov.shape != (3, 3) or innov.shape not in [(3,), (3,1)]:
+        print(f"\n⚠️ Entry {i}")
+        print(f"  landmarkId: {getattr(entry, 'landmarkId', 'N/A')}")
+        print(f"  innovation shape: {innov.shape}")
+        print(f"  innovationCov shape: {cov.shape}")
+        print(f"  innovationCov contents:\n{cov}")
+
+
+
+plot_landmark_innovations(
+    ekf.innovation_log,
+    xLabel="Time [s]",
+    title="EKF Landmark Innovations",
+    measurementNoiseSigma=oneSigmaLandmarkMeas  # optional
+)
+
+
 plt.show()
 
 
