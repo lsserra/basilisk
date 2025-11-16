@@ -1,28 +1,30 @@
-import os, sys
+import os, sys, copy
 import numpy as np
-
-import copy
 import matplotlib.pyplot as plt
-from scipy.integrate import solve_ivp
-from scipy.interpolate import interp1d
 from scipy.linalg import block_diag
-
 import pickle
+
+
+# Add the basilisk root to the Python path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
+
+# EKF
 from EkfPoseEstimator import EkfPosVelState, MekfState, EkfPoseEstimator
 
 # attitude helpers
 from helpers.attitude import DCM
 from helpers.attitude.Quaternion import Quaternion
 
+# simululation assistance
 from faciliateSimulation import generateLandmarks, propagateMCMF, getLandmarkMeasurements
-from PlottingAnalysisTools import plot_landmark_innovations
+from PlottingAnalysisTools import plot_landmark_innovations, plotPosVelStateErrorAnd3sigma, plotMekfAttitudeErrorAnd3Sigma
 
-# Add the basilisk root to the Python path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
+
 
 
 # initalize random seed 
 random_seed = np.random.seed(42)
+rng = np.random.default_rng()
 
 
 with open("data/MoonCentralBody_MoonGrav.pkl", "rb") as f:
@@ -118,12 +120,6 @@ q_MN_tkm =q_MN_0.as_array()
 q_BM_store = []
 
 
-# take vector in M and map to N, then plot traj
-r_PM_M = np.array([1737.4e3 + 1.e3 , 0.0, 0.0])
-eclipticPlane_r_PM_M = None
-r_PM_N_store = []
-eclipticPlane_r_PM_M_store = []
-
 
 
 
@@ -151,7 +147,6 @@ sigma_Mdrdt = 1. # km/s
 
 ## Initial Pos Vel state obj ##
 posVelState0 = EkfPosVelState(nx=nx)
-
 Pxx0 = np.diag([sigma_r,sigma_r,sigma_r,sigma_Mdrdt,sigma_Mdrdt,sigma_Mdrdt])
 Pxx0 = Pxx0 @ Pxx0.T
 posVelState0.Pxx = Pxx0
@@ -161,37 +156,49 @@ posVelState0.t = t0
 r_BM_M0 = q_MN_0.rotate(sc_pos[0,:])
 rdot_BM_M = q_MN_0.rotate(sc_vel[0,:])
 Mdrdt_BM_M0 = rdot_BM_M - (np.cross(w_MN_M, r_BM_M0))
-# fill
-posVelState0.r_BM_M_mean = r_BM_M0
-posVelState0.Mdrdt_BM_M_mean = Mdrdt_BM_M0
+
+# fill Gaussian corrupted inital states
+posVelState0.r_BM_M_mean = rng.normal(
+        loc=r_BM_M0, scale=sigma_r, size=r_BM_M0.shape
+    )
+posVelState0.Mdrdt_BM_M_mean = rng.normal(
+        loc=Mdrdt_BM_M0, scale=sigma_Mdrdt, size=Mdrdt_BM_M0.shape
+    )
+
 
 ## Initial MEKF state obj ##
 mekfState0 = MekfState(nx=nx)
+
+# covariance
+sigmaAtt = np.deg2rad(1) # deg -> rad
+sigmaGyroBias = np.deg2rad(.2)/3600 # deg/hr -> rad/s
+Pxx0 = block_diag(sigmaAtt*np.eye(3),sigmaGyroBias*np.eye(3))
+Pxx0 = Pxx0@Pxx0.T
+
 # init sc body attitude
 q_NM_0 = q_MN_0.inverse()
 q_BN_0 = q_BN_truth[0]
 q_BM_true_0 = q_BN_0*q_NM_0
-mekfState0.q_BMref = q_BM_true_0
 
-# covariance
-sigmaAtt = np.deg2rad(.1) # deg -> rad
-sigmaGyroBias = np.deg2rad(.2)/3600 # deg/hr -> rad/s
-Pxx0 = block_diag(sigmaAtt*np.eye(3),sigmaGyroBias*np.eye(3))
-Pxx0 = Pxx0@Pxx0.T
+# Gaussian currupted attitude
+bodyErrorEulerVector= rng.normal(
+        loc=np.zeros((3,1)), scale=sigmaAtt, size=np.zeros((3,1)).shape
+    )
+phi = np.linalg.norm(bodyErrorEulerVector)
+ehat = bodyErrorEulerVector/phi
+qbodyErrorEulerVector = Quaternion.from_axis_angle(axis=ehat.flatten(),angle=phi)
+mekfState0.q_BMref = q_BM_true_0 * qbodyErrorEulerVector
+
+
 
 # sigmaAtt = 9.4e-6 # rad^2
 # sigmaGyroBias = 9.4e-13 # rad^2/s^2
 # Pxx0 = block_diag(sigmaAtt*np.eye(3),sigmaGyroBias*np.eye(3))
 mekfState0.Pxx = Pxx0
-
 # time
 mekfState0.t = t0
-
 # process noise
-
 Qmekf = 1e-12 * np.eye(6) # TODO check!
-
-
 # pass IC's, process noise PSD to filter
 ekf.initialize(
     initPosVelState=posVelState0,
@@ -200,18 +207,21 @@ ekf.initialize(
     Qmekf=Qmekf) 
 
 
-radiusMoonkm = 1737.4 # km
+
 ## landmark measurement initialization ##
 # measurement noise
 oneSigmaLandmarkMeas = 5.0 # km
-relativeDistanceThresholdKm = np.linalg.norm(r_BM_M0) - radiusMoonkm + 100 # km
-halfAngleConeFOVdeg = 85.
+
+# EKF measurement noise
 PvvLM = oneSigmaLandmarkMeas**2 * np.eye(3)
 ekf.Pvv = PvvLM
-# feed map 
-# ekf.loadLandmarkMap(mapLandmarks) 
-ekf.loadLandmarkMap(trueLandmarks) # TODO WARNING passing map = truth
-# ekf.loadLandmarkMap(mapLandmarks)
+# load map 
+ekf.loadLandmarkMap(trueLandmarks) 
+
+# parameters for 'optical sensor suite'
+radiusMoonkm = 1737.4 # km
+relativeDistanceThresholdKm = np.linalg.norm(r_BM_M0) - radiusMoonkm + 100 # km
+halfAngleConeFOVdeg = 85.
 
 
 
@@ -307,6 +317,11 @@ for i, tk in enumerate(timeData):
     ekf.mx_posVel_prior_tk_ = ekf.mx_posVel_post_tk
     ekf.mx_mekf_prior_tk_ = ekf.mx_mekf_post_tk
 
+
+
+
+
+
     ## running error check
     r_error = r_BM_M.reshape(-1,1) - ekf.mx_posVel_post_tk.r_BM_M_mean
     v_error = Mdrdt_BM_M - ekf.mx_posVel_post_tk.Mdrdt_BM_M_mean
@@ -315,203 +330,32 @@ for i, tk in enumerate(timeData):
         q_ref=Quaternion.from_array(q_BM_store[i]),
         q_est=ekf.mx_mekf_post_tk.q_BMref
     )
-    foo=1
 
 
 
 
 
 
-# grab ekf error state and reference state and make plots
+## grab ekf error state and reference state and make plots
 posVelStateList = copy.deepcopy(ekf.posVelState_log)
 mekfStateList = copy.deepcopy(ekf.mekfState_log)
 
+## plot data to analyze
+plotPosVelStateErrorAnd3sigma(r_TruthList=r_BM_M_TruthStore,
+                              v_TruthList=Mdrdt_BM_M_M_TruthStore,
+                              t_TruthNpArray=timeData,
+                              posVelEstListLog=posVelStateList
+                              )
 
-############################################
-# Position and Velocity filter state
-# extraction, interpolation of truth, and error calculation
-############################################
-t_filt = np.array([s.t for s in posVelStateList])
-Pxx_list = [s.Pxx for s in posVelStateList]
-P_diag_posVel = np.array([np.diag(P) for P in Pxx_list])
-sigma3_posVel = 3 * np.sqrt(P_diag_posVel)
-
-
-
-# Extract reference state
-r_filt = np.vstack([
-    np.array(xref.r_BM_M_mean).reshape(1, -1)
-    for xref in posVelStateList
-])
-v_filt = np.vstack([
-    np.array(xref.Mdrdt_BM_M_mean).reshape(1, -1)
-    for xref in posVelStateList
-])
-
-# Extract true state
-r_truth = np.array(r_BM_M_TruthStore)
-v_truth = np.array(Mdrdt_BM_M_M_TruthStore)
-
-r_interp_truth = interp1d(timeData, r_truth, axis=0)
-r_true_interp = r_interp_truth(t_filt)
-
-v_interp_truth = interp1d(timeData, v_truth, axis=0)
-v_true_interp = v_interp_truth(t_filt)
-
-mask = np.any(P_diag_posVel < 0., axis=1)
-bad_times = t_filt[mask]
-
-
-
-# Compute estimation error
-positionError = r_true_interp - r_filt
-velocityError = v_true_interp - v_filt
-nSolutions = len(r_filt)
-
-print(f"Final r Error = {positionError[-1,:]} [km]")
-print(f"Final v Error = {velocityError[-1,:]} [km/s]")
-
-
-
-
-
-
-
-############################################
-# MEKF filter state
-# extraction, interpolation of truth, and error calculation
-############################################
-t_filt = np.array([s.t for s in mekfStateList])
-Pxx_list = [s.Pxx for s in mekfStateList]
-P_diag_mekf = np.array([np.diag(P) for P in Pxx_list])
-# convert to deg
-P_diag_mekf = np.rad2deg(np.rad2deg(P_diag_mekf))
-sigma3_mekf = 3 * np.sqrt(P_diag_mekf)
-
-
-# Extract reference state
-q_BM_filt_list = np.array([mx.q_BMref for mx in mekfStateList])
-gyroBias_filt_array = np.vstack([
-    np.array(xref.gyroBiasRef).reshape(1, -1)
-    for xref in mekfStateList
-])
-# interpolate truth solution
-q_BM_truth_array = np.array(q_BM_store)
-q_BM_interp1dObj_truth = interp1d(timeData, q_BM_truth_array, axis=0)
-q_BM_true_interp = q_BM_interp1dObj_truth(t_filt)
-gryoBiasTruth = np.zeros(gyroBias_filt_array.shape) # TODO grab from basilisk
-
-# compute attitude error as principle rotation vector
-# body attitude error list
-PRV_BprimeB_list = []
-for i in range(q_BM_filt_list.shape[0]):
-    # compute attitude error and store
-    q_BM_true = Quaternion.from_array(q_BM_true_interp[i,:]).normalize()
-    q_BM_filt = q_BM_filt_list[i]
-    prv_BprimeB = Quaternion.computeEulerVecAttErrorFromQuats(
-        q_ref=q_BM_true,
-        q_est=q_BM_filt
-    )
-    PRV_BprimeB_list.append(prv_BprimeB)
-
-PRV_BprimeB_array = np.array(PRV_BprimeB_list)
-
-# gryo bias error 
-gyroBiasError_array = gryoBiasTruth - gyroBias_filt_array
-
-
-
-############################################
-# Plot position and velocity estimation errors
-############################################
-fig, axs = plt.subplots(3, 2, figsize=(11, 8), sharex=True)
-pos_labels = ['X', 'Y', 'Z']
-vel_labels = ['X', 'Y', 'Z']
-
-# Position error plots
-for i in range(3):
-    axs[i, 0].plot(t_filt, positionError[:, i], 'k-', linewidth=1.8, label=f'{pos_labels[i]}')
-    axs[i, 0].plot(t_filt, sigma3_posVel[:, i], 'r--', linewidth=1)
-    axs[i, 0].plot(t_filt, -sigma3_posVel[:, i], 'r--', linewidth=1, label='±3σ confidence')
-    axs[i, 0].set_ylabel(f'{pos_labels[i]} [km]')
-    axs[i, 0].grid(True)
-    axs[i, 0].legend(loc='upper right')
-    axs[0,0].set_title("r_BM_M Estimation Error")
-
-# Velocity error plots
-for i in range(3):
-    axs[i, 1].plot(t_filt, velocityError[:,i], 'k-', linewidth=1.8, label=f'{vel_labels[i]}')
-    axs[i, 1].plot(t_filt, sigma3_posVel[:, 3 + i], 'r--', linewidth=1)
-    axs[i, 1].plot(t_filt, -sigma3_posVel[:, 3 + i], 'r--', linewidth=1,label='±3σ confidence')
-    axs[i, 1].set_ylabel(f'{vel_labels[i]} [km/s]')
-    axs[i, 1].grid(True)
-    axs[i, 1].legend(loc='upper right')
-    axs[0,1].set_title("Md(r_BM_M)/dt Estimation Error")
-
-axs[-1, 0].set_xlabel('Time [s]')
-axs[-1, 1].set_xlabel('Time [s]')
-fig.suptitle(f"MCMF r_BM_M & Md(.)dt Estimation Errors ±3σ\n{nSolutions} EKF Steps", fontsize=14)
-
-plt.tight_layout(rect=[0, 0, 1, 0.95])
-
-
-
-
-
-############################################
-# Plot attitude and gyro bias estimation errors
-############################################
-fig, axs = plt.subplots(3, 2, figsize=(11, 8), sharex=True)
-body_labels = ['X', 'Y', 'Z']
-gryo_labels = ['X', 'Y', 'Z']
-
-# Position error plots
-for i in range(3):
-    axs[i, 0].plot(t_filt, np.rad2deg(PRV_BprimeB_array[:, i]), 'k-', linewidth=1.8, label=f'{body_labels[i]}')
-    axs[i, 0].plot(t_filt, (sigma3_mekf[:, i]), 'r--', linewidth=1)
-    axs[i, 0].plot(t_filt, (-sigma3_mekf[:, i]), 'r--', linewidth=1, label='±3σ confidence')
-    axs[i, 0].set_ylabel(f'Body Frame {body_labels[i]} Error [deg]')
-    axs[i, 0].grid(True)
-    axs[i, 0].legend(loc='upper right')
-    axs[0,0].set_title("Body Frame MCMF Attitude Error as PRV")
-
-# Velocity error plots
-for i in range(3):
-    axs[i, 1].plot(t_filt, np.rad2deg(gyroBiasError_array[:,i]), 'k-', linewidth=1.8, label=f'{body_labels[i]}')
-    axs[i, 1].plot(t_filt, (sigma3_mekf[:, 3 + i]), 'r--', linewidth=1)
-    axs[i, 1].plot(t_filt, (-sigma3_mekf[:, 3 + i]), 'r--', linewidth=1,label='±3σ confidence')
-    axs[i, 1].set_ylabel(f'Gyro Frame {body_labels[i]} Bias Error [deg/s]')
-    axs[i, 1].grid(True)
-    axs[i, 1].legend(loc='upper right')
-    axs[0,1].set_title("Gryo Bias Error")
-
-axs[-1, 0].set_xlabel('Time [s]')
-axs[-1, 1].set_xlabel('Time [s]')
-fig.suptitle(f"MEKF Estimation Errors ±3σ\n{nSolutions} EKF Steps", fontsize=14)
-
-plt.tight_layout(rect=[0, 0, 1, 0.95])
-
-
-
-for i, entry in enumerate(ekf.innovation_log):
-    cov = np.array(entry.innovationCov)
-    innov = np.array(entry.innovation)
-
-    # Check for bad shapes
-    if cov.shape != (3, 3) or innov.shape not in [(3,), (3,1)]:
-        print(f"\n⚠️ Entry {i}")
-        print(f"  landmarkId: {getattr(entry, 'landmarkId', 'N/A')}")
-        print(f"  innovation shape: {innov.shape}")
-        print(f"  innovationCov shape: {cov.shape}")
-        print(f"  innovationCov contents:\n{cov}")
-
-
+plotMekfAttitudeErrorAnd3Sigma(mekfStateList=mekfStateList,
+                               q_BM_TruthList=q_BM_store,
+                               t_TruthNpArray=timeData)
 
 plot_landmark_innovations(
     ekf.innovation_log,
     xLabel="Time [s]",
     title="EKF Landmark Innovations",
-    measurementNoiseSigma=oneSigmaLandmarkMeas  # optional
+    measurementNoiseSigma=oneSigmaLandmarkMeas
 )
 
 

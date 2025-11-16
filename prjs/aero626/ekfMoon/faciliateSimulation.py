@@ -21,8 +21,7 @@ from helpers.attitude.Quaternion import Quaternion
 
 
 
-### create landmark measurements along trajectory ###
-
+## create landmark map 
 import numpy as np
 def generateLandmarks(
     radiusBodyKm,
@@ -50,6 +49,8 @@ def generateLandmarks(
 
     return trueLandmarks, mapLandmarks
 
+
+### return landmarks in view with Gaussian noise
 def getLandmarkMeasurements(
     r_BM_M_truth,
     q_BM_truth,
@@ -261,8 +262,6 @@ if __name__ == "__main__":
 
 
     rng = np.random.seed(42)
-
-
     bodyRadius_km = 1737.4
 
     nLandmarks = 10000
