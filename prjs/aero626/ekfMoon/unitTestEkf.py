@@ -199,10 +199,12 @@ ekf.initialize(
     QPosVel=Qww_posVel,
     Qmekf=Qmekf) 
 
+
+radiusMoonkm = 1737.4 # km
 ## landmark measurement initialization ##
 # measurement noise
-oneSigmaLandmarkMeas = 1.0 # km
-relativeDistanceThresholdKm = 100. # km
+oneSigmaLandmarkMeas = 5.0 # km
+relativeDistanceThresholdKm = np.linalg.norm(r_BM_M0) - radiusMoonkm + 100 # km
 halfAngleConeFOVdeg = 85.
 PvvLM = oneSigmaLandmarkMeas**2 * np.eye(3)
 ekf.Pvv = PvvLM
@@ -284,7 +286,8 @@ for i, tk in enumerate(timeData):
             trueLandmarks=trueLandmarks,
             measurement1sigma=oneSigmaLandmarkMeas,
             randomSeed=random_seed,
-            halfAngleDeg=halfAngleConeFOVdeg
+            halfAngleDeg=halfAngleConeFOVdeg,
+            debugPlot = False
         )
         if visibleLandmarks.shape[0] > 0:
             ekf.updateWithLandmarks(visibleLandmarks, measTime=tk)

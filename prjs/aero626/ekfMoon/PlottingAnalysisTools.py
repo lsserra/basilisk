@@ -5,6 +5,7 @@ def plot_landmark_innovations(
     innovations_log,
     xLabel="Time [s]",
     title="Landmark Innovations, Body Frame Axis",
+    unitString = "km",
     show_measurement_noise=True,
     measurementNoiseSigma=None,
     show_confidence=True,
@@ -38,7 +39,7 @@ def plot_landmark_innovations(
 
     # --- Plot ---
     fig, axs = plt.subplots(3, 1, figsize=figsize, sharex=True)
-    labels = ["x", "y", "z"]
+    labels = [f"x {unitString}", f"y {unitString}", f"z {unitString}"]
 
     for i, ax in enumerate(axs):
         ax.scatter(innTime_array, inn_array[:, i], marker='x', color='k', label=f'Innovation {labels[i]}')

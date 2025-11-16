@@ -57,7 +57,9 @@ def getLandmarkMeasurements(
     trueLandmarks,
     measurement1sigma,
     halfAngleDeg=20.0,      # cone half-angle (degrees)
-    randomSeed=None
+    randomSeed=None,
+    debugPlot = False,
+    firstPass =True
 ):
     """
     Generate landmark measurements within a given distance AND within a viewing cone.
@@ -104,7 +106,7 @@ def getLandmarkMeasurements(
 
     # Filter by cone
     cosHalfAngle = np.cos(np.deg2rad(halfAngleDeg))
-    withinCone = cosAngles > cosHalfAngle
+    withinCone = cosAngles > 0.0
 
 
     r_LB_B_visible = r_LB_B[withinCone]
@@ -117,6 +119,111 @@ def getLandmarkMeasurements(
 
     # Append landmark indices
     outputZkMat = np.hstack((noisyMeasurements, visibleIndices.reshape(-1, 1)))
+
+
+    ## plot the true landmarks as scattered plot 
+    # overlay current postion
+    if debugPlot is True:
+        
+        if firstPass is True:
+            fig = plt.figure(figsize=(8, 8))
+            ax = fig.add_subplot(111, projection='3d')
+            firstPass = False        
+        # --- Plot ---
+        
+        # --- Draw viewing cone in M-frame ---
+        # Paramete`rs
+        L = distanceThresholdKm      # cone length (km)
+        theta = np.deg2rad(halfAngleDeg)
+        r = L * np.tan(theta)        # cone radius at distance L
+        n_pts = 40
+
+        # Parametric angle around cone
+        phi = np.linspace(0, 2*np.pi, n_pts)
+
+        # Cone surface in local axis-aligned frame: axis = +z
+        z = np.linspace(0, L, n_pts)
+        R = (z / L) * r
+
+        X = np.outer(R, np.cos(phi))
+        Y = np.outer(R, np.sin(phi))
+        Z = np.outer(z, np.ones_like(phi))
+
+        # Stack for rotation
+        local_points = np.column_stack([X.ravel(), Y.ravel(), Z.ravel()])
+
+        # === Rotate cone from +Z axis into coneAxis_M (in M-frame) ===
+        z_axis = np.array([0,0,1], dtype=float)
+        axis_M = coneAxis_M / np.linalg.norm(coneAxis_M)
+
+        v = np.cross(z_axis, axis_M)
+        c = z_axis.dot(axis_M)
+        theta= np.arccos(c)
+
+
+        if c > 0.999999:
+            # already aligned
+            q_align = Quaternion()
+        elif c < -0.999999:
+            # 180° flip: pick ANY perpendicular axis
+            q_align = Quaternion.from_axis_angle(np.array([1,0,0]), np.pi)
+        else:
+            t2 = theta/2
+            q_align = Quaternion(
+                qv = v * np.sin(t2),
+                q0 = np.cos(t2)
+            )
+            q_align.ensureScalarPos()
+            q_align = q_align.inverse()
+
+        # Rotate all cone points into M-frame
+        rot_points = np.array([q_align.rotate(p) for p in local_points])
+
+        # Shift cone origin to spacecraft location r_BM_M_truth (in M-frame)
+        rot_points += r_BM_M_truth.reshape(1,3)
+
+        # Reshape back to 2D grid for surface plotting
+        CX = rot_points[:,0].reshape(X.shape)
+        CY = rot_points[:,1].reshape(Y.shape)
+        CZ = rot_points[:,2].reshape(Z.shape)
+
+        
+
+        # planet 
+        # --- Planet sphere ---
+        planetColor = '#555555'
+        planetRadius = 1737.4 # km
+        u = np.linspace(0, 2*np.pi, 50)
+        v = np.linspace(0, np.pi, 50)
+        xs = planetRadius * np.outer(np.cos(u), np.sin(v))
+        ys = planetRadius * np.outer(np.sin(u), np.sin(v))
+        zs = planetRadius * np.outer(np.ones_like(u), np.cos(v))
+        # ax.plot_surface(xs, ys, zs, color=planetColor, alpha=0.3)
+
+        # 'visible' landmarks
+        r_LM_M_visible = trueLandmarks[visibleIndices,:]
+        ax.scatter(trueLandmarks[:,0], trueLandmarks[:,1], trueLandmarks[:,2], 
+                c='k', s=1, label='True Landmarks')
+        
+        ax.scatter(r_LM_M_visible[:,0], r_LM_M_visible[:,1], r_LM_M_visible[:,2], 
+                c='y', s=8, label='Visable Landmarks')
+        ax.scatter(r_BM_M_truth[0],r_BM_M_truth[1], r_BM_M_truth[2], 
+                c='r', s=30, label='Truth Position')
+        
+        # --- Plot cone ---
+        #ax.plot_surface(CX, CY, CZ, alpha=0.25, linewidth=0)
+
+        
+
+
+        ax.set_xlabel('x [km]')
+        ax.set_ylabel('y [km]')
+        ax.set_zlabel('z [km]')
+        ax.set_title('Current Visible Landmarks on Lunar Surface')
+        ax.legend()
+        ax.set_box_aspect([1,1,1])
+        plt.show()
+
 
     return outputZkMat
 
@@ -158,7 +265,7 @@ if __name__ == "__main__":
 
     bodyRadius_km = 1737.4
 
-    nLandmarks = 50000
+    nLandmarks = 10000
     mapSigma = .01 #km
     
     trueLandmarks,mapLandmarks = generateLandmarks(
@@ -186,6 +293,7 @@ if __name__ == "__main__":
     ax.set_ylabel('y [km]')
     ax.set_zlabel('z [km]')
     ax.set_title('Generated Landmarks on Lunar Surface')
+    
     ax.legend()
     ax.set_box_aspect([1,1,1])
     plt.show()
