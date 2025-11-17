@@ -44,10 +44,11 @@ class Quaternion:
         return self
     
     def ensureScalarPos(self):
-        if (self.scalar() < 1e-6):
-            return Quaternion(qv=-self.vector(),q0=-self.scalar())
-        else:
-            return self
+        if self.scalar() < 1e-6:
+            self.q0 = -self.scalar()
+            self.qv = -self.vector()
+        return self
+
 
     def inverse(self):
         """Inverse quaternion (for unit q, same as conjugate)."""

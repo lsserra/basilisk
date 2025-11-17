@@ -111,9 +111,9 @@ def run(showPlots, savePkl, EarthAndMoonGrav):
     rLLO = moonBody.radEquator + 2000       # meters
     oe.a = rLLO
     oe.e = 0.00001
-    oe.i = 0.0 * macros.D2R
+    oe.i = 25.0 * macros.D2R
     oe.Omega = 0.0 * macros.D2R
-    oe.omega = 0.0 * macros.D2R
+    oe.omega = 15.0 * macros.D2R
     oe.f = 0.0 * macros.D2R
     rN, vN = orbitalMotion.elem2rv(moonBody.mu, oe)
     oe = orbitalMotion.rv2elem(moonBody.mu, rN, vN)   
@@ -152,6 +152,7 @@ def run(showPlots, savePkl, EarthAndMoonGrav):
     imu.ModelTag = "imu"    
     
     # Configure gyro noise (rad/s)
+    gryoBias = np.deg2rad(0.1) / 3600 # deg/hr to rad/s
     # imu.senRotBias = np.array([0.,0.,0.])
     senRotNoiseStd = np.sqrt(10)*10**(-7) # rad/sec^(3/2)
     walkBound = 0.01 # rad/s

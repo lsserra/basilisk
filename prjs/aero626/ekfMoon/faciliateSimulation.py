@@ -119,6 +119,11 @@ def getLandmarkMeasurements(
     )
 
     # Append landmark indices
+
+    if noisyMeasurements.shape[0]>1.:
+        noisyMeasurements = noisyMeasurements[:2,:]
+        visibleIndices = visibleIndices[:2]
+        
     outputZkMat = np.hstack((noisyMeasurements, visibleIndices.reshape(-1, 1)))
 
 

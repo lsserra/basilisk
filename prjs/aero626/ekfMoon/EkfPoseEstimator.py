@@ -299,9 +299,11 @@ class EkfPoseEstimator():
         self.mx_posVel_prior_tk.Pxx = Pxx_sol_tk
 
 
-         # if any non-finite values, skip update
+        # if any non-finite values, thrown an exception
         if np.any(Pxx_sol_tk[np.diag_indices_from(Pxx_sol_tk)] < 0.0):
-            self._log_outlier(tk, True)
+            raise ValueError(
+                f"Invalid covariance: Pxx has negative diagonal entries after translational propagation at time {tk}"
+            )
             
 
         # --- MEKF Propagation --- #
@@ -331,8 +333,8 @@ class EkfPoseEstimator():
             atol=1e-9
         )
 
-        q_MN_tk = sol.y[:, -1]
-        q_MN_tk_obj = Quaternion.from_array(q_MN_tk).normalize()
+        q_BM_tk = sol.y[:, -1]
+        q_BM_tk_obj = Quaternion.from_array(q_BM_tk).normalize()
         
         # propagate error covarance
         wx,wy,wz = w_BM_B_corrected
@@ -365,15 +367,16 @@ class EkfPoseEstimator():
         PxxMekf_tk = x_aug_sol[:, -1].reshape(self.nx_mekf,self.nx_mekf)
 
         
-
-          # if any non-finite values, skip update
-        if np.any(PxxMekf_tk[np.diag_indices_from(PxxMekf_tk)] < 0.0):
-            self._log_outlier(tk, True)
+        # if any non-finite values, thrown an exception
+        if np.any(Pxx_sol_tk[np.diag_indices_from(Pxx_sol_tk)] < 0.0):
+            raise ValueError(
+                f"Invalid covariance: Pxx has negative diagonal entries after MEKF propagation at time {tk}"
+            )
             
 
         # update mekf prior state obj at end of prop
         self.mx_mekf_prior_tk.t = tk
-        self.mx_mekf_prior_tk.q_BMref = q_MN_tk_obj
+        self.mx_mekf_prior_tk.q_BMref = q_BM_tk_obj.ensureScalarPos()
         self.mx_mekf_prior_tk.Pxx = PxxMekf_tk
 
         # construct full state error covariance post propagation
@@ -504,15 +507,19 @@ class EkfPoseEstimator():
         # update full state covariance
         self.mx_full.Pxx = Pxxk_post
 
-         # if any non-finite values, skip update
+         # if any negative diagonal entries, stop the update
         if np.any(self.mx_full.Pxx[np.diag_indices_from(self.mx_full.Pxx)] < 0.0):
-            self._log_outlier(measTime, True)
+            raise ValueError(
+                f"Invalid covariance: Pxx has negative diagonal entries after measurement update at time {measTime}"
+            )
+
             
 
         # add attitude error correction to nominal quaternion
         q_err = Quaternion(qv=self.mx_mekf_post_tk.angleError_mean.flatten(),
                            q0=1.0)
         q_BM_post = (q_err*self.mx_mekf_prior_tk.q_BMref).normalize()
+        q_BM_post = q_BM_post.ensureScalarPos()
         self.mx_mekf_post_tk.q_BMref = q_BM_post
         # add gyro bias error correction to nominal bias
         gyroBias_post = (self.mx_mekf_prior_tk.gyroBiasRef.flatten() +

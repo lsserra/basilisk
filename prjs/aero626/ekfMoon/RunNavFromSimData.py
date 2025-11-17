@@ -47,9 +47,9 @@ print("Simulation data successfully unboxed.")
 
 ## limit sim time for testing ##
 # idxCap = 25
-idxCap = 700
+# idxCap = 700
 # idxCap = 1500
-# idxCap = None
+idxCap = None
 if idxCap is not None:
     timeData = timeData[:idxCap]
     sc_pos = sc_pos[:idxCap,:]
@@ -118,6 +118,7 @@ q_MN_tkm =q_MN_0.as_array()
 
 # list for MCMF to body truth attitude
 q_BM_store = []
+plotSimTime = []
 
 
 
@@ -133,7 +134,7 @@ nz = 3
 ekf = EkfPoseEstimator()
 # Process Noise
 psd_r = .1 # 
-psd_Mdrdt = 0.01 # 
+psd_Mdrdt = .01 # 
 Qww_posVel = np.diag([psd_r,psd_r,psd_r,psd_Mdrdt,psd_Mdrdt,psd_Mdrdt])
 
 
@@ -141,9 +142,11 @@ Qww_posVel = np.diag([psd_r,psd_r,psd_r,psd_Mdrdt,psd_Mdrdt,psd_Mdrdt])
 # time 
 t0 = timeData[0]
 
+
+
 # covariance 
-sigma_r = 5. # km
-sigma_Mdrdt = 1. # km/s
+sigma_r = 100. # km
+sigma_Mdrdt = 10. # km/s
 
 ## Initial Pos Vel state obj ##
 posVelState0 = EkfPosVelState(nx=nx)
@@ -182,7 +185,7 @@ q_BM_true_0 = q_BN_0*q_NM_0
 
 # Gaussian currupted attitude
 bodyErrorEulerVector= rng.normal(
-        loc=np.zeros((3,1)), scale=sigmaAtt, size=np.zeros((3,1)).shape
+        loc=np.zeros((3,1)), scale=np.deg2rad(0.1), size=np.zeros((3,1)).shape
     )
 phi = np.linalg.norm(bodyErrorEulerVector)
 ehat = bodyErrorEulerVector/phi
@@ -210,10 +213,10 @@ ekf.initialize(
 
 ## landmark measurement initialization ##
 # measurement noise
-oneSigmaLandmarkMeas = 5.0 # km
+oneSigmaLandmarkMeas_eachAxis = 50.0 # km
 
 # EKF measurement noise
-PvvLM = oneSigmaLandmarkMeas**2 * np.eye(3)
+PvvLM = oneSigmaLandmarkMeas_eachAxis**2 * np.eye(3)
 ekf.Pvv = PvvLM
 # load map 
 ekf.loadLandmarkMap(trueLandmarks) 
@@ -224,7 +227,7 @@ relativeDistanceThresholdKm = np.linalg.norm(r_BM_M0) - radiusMoonkm + 100 # km
 halfAngleConeFOVdeg = 85.
 
 
-
+runningPlots = False
 # main sim loop
 for i, tk in enumerate(timeData):
     if i == 0:
@@ -243,9 +246,12 @@ for i, tk in enumerate(timeData):
         
         r_BM_M_TruthStore.append(r_BM_M0)
         Mdrdt_BM_M_M_TruthStore.append(Mdrdt_BM_M0)
+
+        plotSimTime.append(tk)
         continue
 
     tkm = timeData[i-1]
+    plotSimTime.append(tk)
 
     ### MCMF TRUTH GENERATION ###
     # --- MCMF Coordinate Frame --- #
@@ -294,7 +300,7 @@ for i, tk in enumerate(timeData):
             q_BM_truth=q_BM_true,
             distanceThresholdKm=relativeDistanceThresholdKm,  #  km
             trueLandmarks=trueLandmarks,
-            measurement1sigma=oneSigmaLandmarkMeas,
+            measurement1sigma=oneSigmaLandmarkMeas_eachAxis,
             randomSeed=random_seed,
             halfAngleDeg=halfAngleConeFOVdeg,
             debugPlot = False
@@ -302,6 +308,27 @@ for i, tk in enumerate(timeData):
         if visibleLandmarks.shape[0] > 0:
             ekf.updateWithLandmarks(visibleLandmarks, measTime=tk)
             didUpdate = True
+            stopTimeLimit = 108
+            if runningPlots and (tk>stopTimeLimit):
+                tSim = np.array(copy.deepcopy(plotSimTime))
+                ## plot data to analyze
+                plotPosVelStateErrorAnd3sigma(r_TruthList=copy.deepcopy(r_BM_M_TruthStore),
+                                            v_TruthList=copy.deepcopy(Mdrdt_BM_M_M_TruthStore),
+                                            t_TruthNpArray=tSim,
+                                            posVelEstListLog=copy.deepcopy(ekf.posVelState_log)
+                                            )
+
+                plotMekfAttitudeErrorAnd3Sigma(mekfStateList=copy.deepcopy(ekf.mekfState_log),
+                                            q_BM_TruthList=copy.deepcopy(q_BM_store),
+                                            t_TruthNpArray=tSim)
+
+                # plot_landmark_innovations(
+                #     copy.deepcopy(ekf.innovation_log),
+                #     xLabel="Time [s]",
+                #     title="EKF Landmark Innovations",
+                #     measurementNoiseSigma=oneSigmaLandmarkMeas_eachAxis
+                # )
+                plt.show()
     if not didUpdate:
         # update solution timing 
         ekf.mx_mekf_post_tk = copy.deepcopy(ekf.mx_mekf_prior_tk)
@@ -317,7 +344,8 @@ for i, tk in enumerate(timeData):
     ekf.mx_posVel_prior_tk_ = ekf.mx_posVel_post_tk
     ekf.mx_mekf_prior_tk_ = ekf.mx_mekf_post_tk
 
-
+    if ekf.mx_posVel_prior_tk_.Pxx[0,0] > 200**2:
+        break
 
 
 
@@ -340,22 +368,25 @@ for i, tk in enumerate(timeData):
 posVelStateList = copy.deepcopy(ekf.posVelState_log)
 mekfStateList = copy.deepcopy(ekf.mekfState_log)
 
+# plot sim time
+plotSimTime = np.array(plotSimTime)
+
 ## plot data to analyze
 plotPosVelStateErrorAnd3sigma(r_TruthList=r_BM_M_TruthStore,
                               v_TruthList=Mdrdt_BM_M_M_TruthStore,
-                              t_TruthNpArray=timeData,
+                              t_TruthNpArray=plotSimTime,
                               posVelEstListLog=posVelStateList
                               )
 
 plotMekfAttitudeErrorAnd3Sigma(mekfStateList=mekfStateList,
                                q_BM_TruthList=q_BM_store,
-                               t_TruthNpArray=timeData)
+                               t_TruthNpArray=plotSimTime)
 
 plot_landmark_innovations(
     ekf.innovation_log,
     xLabel="Time [s]",
     title="EKF Landmark Innovations",
-    measurementNoiseSigma=oneSigmaLandmarkMeas
+    measurementNoiseSigma=oneSigmaLandmarkMeas_eachAxis
 )
 
 
