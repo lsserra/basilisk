@@ -81,7 +81,7 @@ def getLandmarkMeasurements(
 
     if randomSeed is not None:
         np.random.seed(randomSeed)
-    rng = np.random.default_rng()
+    rng = np.random.default_rng(randomSeed)
 
     # Compute relative position vectors in M frame
     r_LB_M = trueLandmarks - r_BM_M_truth

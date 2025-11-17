@@ -47,10 +47,12 @@ def plot_landmark_innovations(
     ])  # shape (N, 3)
 
     # --- Plot ---
-    fig, axs = plt.subplots(3, 1, figsize=figsize, sharex=True)
+    fig, axs = plt.subplots(4, 1, figsize=(figsize[0], figsize[1]+2), sharex=True)
     labels = [f"x {unitString}", f"y {unitString}", f"z {unitString}"]
 
     for i, ax in enumerate(axs):
+        if i ==3:
+            continue
         ax.scatter(innTime_array, inn_array[:, i], marker='x', color='k', label=f'Innovation {labels[i]}')
 
         # Optional measurement noise bounds
@@ -69,6 +71,17 @@ def plot_landmark_innovations(
             ax.legend(loc='upper right')
         if i == len(axs)-1:
             ax.set_xlabel(xLabel)
+
+    # --- 4th row: Landmark ID vs time ---
+    ax_id = axs[3]
+    landmark_ids = np.array([entry.landmarkId for entry in innovations_log])
+
+    ax_id.scatter(innTime_array, landmark_ids, marker='o', s=12, color='b')
+    ax_id.set_ylabel("ID")
+    ax_id.grid(True)
+    ax_id.set_xlabel(xLabel)
+
+
 
     fig.suptitle(title)
     plt.tight_layout()

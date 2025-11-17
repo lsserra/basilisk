@@ -376,7 +376,8 @@ class EkfPoseEstimator():
 
         # update mekf prior state obj at end of prop
         self.mx_mekf_prior_tk.t = tk
-        self.mx_mekf_prior_tk.q_BMref = q_BM_tk_obj.ensureScalarPos()
+        self.mx_mekf_prior_tk.q_BMref = copy.deepcopy(q_BM_tk_obj)
+        self.mx_mekf_prior_tk.q_BMref.ensureScalarPos()
         self.mx_mekf_prior_tk.Pxx = PxxMekf_tk
 
         # construct full state error covariance post propagation
@@ -420,6 +421,7 @@ class EkfPoseEstimator():
         for i in range(z_meas_matrix.shape[0]):
 
             # get map landmark position
+            self.mx_mekf_prior_tk.q_BMref.ensureScalarPos()
             map_r_LM_M = self.landmarkMap[landmarkIds[i],:].flatten()
             map_r_LM_B= self.mx_mekf_prior_tk.q_BMref.rotate(
                 map_r_LM_M
@@ -519,8 +521,8 @@ class EkfPoseEstimator():
         q_err = Quaternion(qv=self.mx_mekf_post_tk.angleError_mean.flatten(),
                            q0=1.0)
         q_BM_post = (q_err*self.mx_mekf_prior_tk.q_BMref).normalize()
-        q_BM_post = q_BM_post.ensureScalarPos()
-        self.mx_mekf_post_tk.q_BMref = q_BM_post
+        q_BM_post.ensureScalarPos()
+        self.mx_mekf_post_tk.q_BMref = copy.deepcopy(q_BM_post)
         # add gyro bias error correction to nominal bias
         gyroBias_post = (self.mx_mekf_prior_tk.gyroBiasRef.flatten() +
                          self.mx_mekf_post_tk.gyroBiasError_mean.flatten())

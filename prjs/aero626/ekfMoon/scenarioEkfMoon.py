@@ -108,12 +108,12 @@ def run(showPlots, savePkl, EarthAndMoonGrav):
     # setup the orbit using classical orbit elements
     
     oe = orbitalMotion.ClassicElements()
-    rLLO = moonBody.radEquator + 2000       # meters
+    rLLO = moonBody.radEquator + 14000       # meters
     oe.a = rLLO
     oe.e = 0.00001
-    oe.i = 25.0 * macros.D2R
+    oe.i = 0.0 * macros.D2R
     oe.Omega = 0.0 * macros.D2R
-    oe.omega = 15.0 * macros.D2R
+    oe.omega = 0.0 * macros.D2R
     oe.f = 0.0 * macros.D2R
     rN, vN = orbitalMotion.elem2rv(moonBody.mu, oe)
     oe = orbitalMotion.rv2elem(moonBody.mu, rN, vN)   
@@ -134,7 +134,7 @@ def run(showPlots, savePkl, EarthAndMoonGrav):
     # initial tip off
     ### SPACECRAFT
     scObject.hub.sigma_BNInit = rbk.PRV2MRP([macros.D2R*0.0, 0.0, macros.D2R*0.0]) # rbk.C2MRP(np.identity(3))  # sigma_BN_B
-    scObject.hub.omega_BN_BInit = [macros.D2R*1.0, macros.D2R*0.0, macros.D2R*5.0]  # rad/s - omega_BN_B
+    scObject.hub.omega_BN_BInit = [macros.D2R*0.0, macros.D2R*0.0, macros.D2R*0.0]  # rad/s - omega_BN_B
     
 
     # set the simulation time
@@ -158,14 +158,15 @@ def run(showPlots, savePkl, EarthAndMoonGrav):
     walkBound = 0.01 # rad/s
     PMatrix = np.eye(3)* senRotNoiseStd**2 # cholesky defactorization of noise covariance matrix, drives Gauss Markov Process
     L = np.linalg.cholesky(PMatrix)
-    # L = np.zeros((3,3))
+    L = np.zeros((3,3))
     imu.PMatrixGyro = L
     AMatrixGyro = np.zeros((3,3))
 
     senWalkNoiseStd = np.sqrt(10)*10**(-10) # rad/sec^(3/2)
     AMatrixGyro = np.eye(3)* senWalkNoiseStd**2 # cholesky defactorization of noise covariance matrix, drives Gauss Markov Process
     L = np.linalg.cholesky(AMatrixGyro)
-    imu.AMatrixGyro = L
+    # imu.AMatrixGyro = L
+    imu.AMatrixGyro = np.zeros((3,3))
     imu.setErrorBoundsGyro([walkBound, walkBound, walkBound])
     imu.scStateInMsg.subscribeTo(scObject.scStateOutMsg)
     # Add IMU to simulation
@@ -306,6 +307,8 @@ def run(showPlots, savePkl, EarthAndMoonGrav):
     plt.plot(timeData * macros.NANO2SEC / P,alt/1000.)
     plt.ylabel('Altitude [km]')
     plt.xlabel('Time [orbits]')
+    # disable scientific notation on y-axis
+    plt.gca().ticklabel_format(style='plain', axis='y')
 
 
 

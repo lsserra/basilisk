@@ -20,11 +20,12 @@ from faciliateSimulation import generateLandmarks, propagateMCMF, getLandmarkMea
 from PlottingAnalysisTools import plot_landmark_innovations, plotPosVelStateErrorAnd3sigma, plotMekfAttitudeErrorAnd3Sigma
 
 
-
-
 # initalize random seed 
-random_seed = np.random.seed(42)
-rng = np.random.default_rng()
+random_seed = 42
+# random_seed = 41
+# random_seed = 40
+rng = np.random.default_rng(random_seed)
+
 
 
 with open("data/MoonCentralBody_MoonGrav.pkl", "rb") as f:
@@ -146,7 +147,7 @@ t0 = timeData[0]
 
 # covariance 
 sigma_r = 100. # km
-sigma_Mdrdt = 10. # km/s
+sigma_Mdrdt = 1.1 # km/s
 
 ## Initial Pos Vel state obj ##
 posVelState0 = EkfPosVelState(nx=nx)
@@ -162,10 +163,10 @@ Mdrdt_BM_M0 = rdot_BM_M - (np.cross(w_MN_M, r_BM_M0))
 
 # fill Gaussian corrupted inital states
 posVelState0.r_BM_M_mean = rng.normal(
-        loc=r_BM_M0, scale=sigma_r, size=r_BM_M0.shape
+        loc=r_BM_M0, scale=sigma_r/200, size=r_BM_M0.shape
     )
 posVelState0.Mdrdt_BM_M_mean = rng.normal(
-        loc=Mdrdt_BM_M0, scale=sigma_Mdrdt, size=Mdrdt_BM_M0.shape
+        loc=Mdrdt_BM_M0, scale=sigma_Mdrdt/200, size=Mdrdt_BM_M0.shape
     )
 
 
@@ -227,7 +228,7 @@ relativeDistanceThresholdKm = np.linalg.norm(r_BM_M0) - radiusMoonkm + 100 # km
 halfAngleConeFOVdeg = 85.
 
 
-runningPlots = False
+
 # main sim loop
 for i, tk in enumerate(timeData):
     if i == 0:
@@ -278,6 +279,7 @@ for i, tk in enumerate(timeData):
     q_NM_i = q_MN_tk_obj.inverse()
     q_BN_i = q_BN_truth[i]
     q_BM_true = q_BN_i * q_NM_i 
+    q_BM_true.ensureScalarPos()
     q_BM_store.append(q_BM_true.as_array())
 
 
@@ -298,7 +300,7 @@ for i, tk in enumerate(timeData):
         visibleLandmarks = getLandmarkMeasurements(
             r_BM_M_truth=r_BM_M,
             q_BM_truth=q_BM_true,
-            distanceThresholdKm=relativeDistanceThresholdKm,  #  km
+        distanceThresholdKm=relativeDistanceThresholdKm,  #  km
             trueLandmarks=trueLandmarks,
             measurement1sigma=oneSigmaLandmarkMeas_eachAxis,
             randomSeed=random_seed,
@@ -308,7 +310,9 @@ for i, tk in enumerate(timeData):
         if visibleLandmarks.shape[0] > 0:
             ekf.updateWithLandmarks(visibleLandmarks, measTime=tk)
             didUpdate = True
-            stopTimeLimit = 108
+            stopTimeLimit = 100
+            runningPlots = True
+            pauseTime = 1.
             if runningPlots and (tk>stopTimeLimit):
                 tSim = np.array(copy.deepcopy(plotSimTime))
                 ## plot data to analyze
@@ -317,18 +321,28 @@ for i, tk in enumerate(timeData):
                                             t_TruthNpArray=tSim,
                                             posVelEstListLog=copy.deepcopy(ekf.posVelState_log)
                                             )
+                # plt.show(block=False)   # display immediately
+                # plt.pause(pauseTime)          # keep open 5 seconds
+                # plt.close('all') 
 
                 plotMekfAttitudeErrorAnd3Sigma(mekfStateList=copy.deepcopy(ekf.mekfState_log),
                                             q_BM_TruthList=copy.deepcopy(q_BM_store),
                                             t_TruthNpArray=tSim)
+                # plt.show(block=False)   # display immediately
+                # plt.pause(pauseTime)          # keep open 5 seconds
+                # plt.close('all') 
 
-                # plot_landmark_innovations(
-                #     copy.deepcopy(ekf.innovation_log),
-                #     xLabel="Time [s]",
-                #     title="EKF Landmark Innovations",
-                #     measurementNoiseSigma=oneSigmaLandmarkMeas_eachAxis
-                # )
+                plot_landmark_innovations(
+                    copy.deepcopy(ekf.innovation_log),
+                    xLabel="Time [s]",
+                    title="EKF Landmark Innovations",
+                    measurementNoiseSigma=oneSigmaLandmarkMeas_eachAxis
+                )
+                # plt.show(block=False)   # display immediately
+                # plt.pause(pauseTime)          # keep open 5 seconds
+                # plt.close('all') 
                 plt.show()
+                
     if not didUpdate:
         # update solution timing 
         ekf.mx_mekf_post_tk = copy.deepcopy(ekf.mx_mekf_prior_tk)
@@ -358,6 +372,8 @@ for i, tk in enumerate(timeData):
         q_ref=Quaternion.from_array(q_BM_store[i]),
         q_est=ekf.mx_mekf_post_tk.q_BMref
     )
+
+    foo=1
 
 
 

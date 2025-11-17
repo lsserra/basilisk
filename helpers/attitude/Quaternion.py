@@ -45,8 +45,7 @@ class Quaternion:
     
     def ensureScalarPos(self):
         if self.scalar() < 1e-6:
-            self.q0 = -self.scalar()
-            self.qv = -self.vector()
+            self.q *= -1.0    # flips all 4 components in place
         return self
 
 
@@ -184,7 +183,7 @@ class Quaternion:
         q_est.ensureScalarPos()
 
         # Quaternion attitude error (reference → estimated) expressed in object frame
-        q_err = q_ref * q_est.conj()
+        q_err = q_ref * q_est.inverse()
 
         # Convert to array form [qx, qy, qz, q0]
         q_err_arr = q_err.as_array()
