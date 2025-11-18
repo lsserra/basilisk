@@ -472,19 +472,21 @@ class EkfPoseEstimator():
             
 
             if HxStack is not None:
-                HxStack = np.vstack((HxStack,
-                                    np.hstack((HxTrans,HxMekf))))
+                Hxi = np.concatenate((HxTrans,HxMekf),axis=1)
+                HxStack = np.concatenate((HxStack,Hxi),axis=0)
                 PvvStack = block_diag(
                     PvvStack,
                     self.Pvv)
                 innovationsVec = np.vstack((innovationsVec, innovation.reshape(-1,1)))
             else:
-                HxStack = np.hstack((HxTrans,HxMekf))
+                HxStack = np.concatenate((HxTrans,HxMekf),axis=1)
+                HxStack = HxTrans 
                 PvvStack = self.Pvv
                 innovationsVec = innovation.reshape(-1,1)
                 
         # prepare for kalman update
         Pxxk_prior = self.mx_full.Pxx
+        Pxxk_prior = self.mx_posVel_prior_tk.Pxx
         Pxzk = Pxxk_prior @ HxStack.T
         Pzzk = (HxStack @ Pxxk_prior @ (HxStack.T)) + PvvStack
         Kk = Pxzk @ linalg.inv(Pzzk)
@@ -501,25 +503,35 @@ class EkfPoseEstimator():
         mxk_prior = np.concatenate((
             self.mx_posVel_prior_tk.r_BM_M_mean.flatten(),
             self.mx_posVel_prior_tk.Mdrdt_BM_M_mean.flatten(),
-            self.mx_mekf_prior_tk.angleError_mean.flatten(),
-            self.mx_mekf_prior_tk.gyroBiasError_mean.flatten()
+            # self.mx_mekf_prior_tk.angleError_mean.flatten(),
+            # self.mx_mekf_prior_tk.gyroBiasError_mean.flatten()
         ),axis=0).reshape((-1,1))
         
         # kalman update
         mxk_post = mxk_prior + Kk @ innovationsVec
-        Pxxk_post = Pxxk_prior - Pxzk@Kk.T - Kk@Pxzk.T + Kk @ Pzzk @ Kk.T
+
+        # try Joseph's Formulation of the covariance update eq
+        I12 = np.eye(self.nx_posVel)
+
+        # Kalman Gain with non-linear measurements
+        Pxxk_post = (I12 - Kk@HxStack)@Pxxk_prior
+
+        # Joseph's
+        # Pxxk_post = (I12 - Kk@HxStack) @ Pxxk_prior @ (I12 - Kk@HxStack).T + Kk@PvvStack@Kk.T
+        # Basic Covariance update
+        # Pxxk_post = Pxxk_prior - Pxzk@Kk.T - Kk@Pxzk.T + Kk @ Pzzk @ Kk.T
 
         # unpack updated states
         self.mx_posVel_post_tk.r_BM_M_mean = mxk_post[:3].flatten()
         self.mx_posVel_post_tk.Mdrdt_BM_M_mean = mxk_post[3:6].flatten()
-        self.mx_mekf_post_tk.angleError_mean = mxk_post[6:9].flatten()
-        self.mx_mekf_post_tk.gyroBiasError_mean = mxk_post[9:].flatten()
+        # self.mx_mekf_post_tk.angleError_mean = mxk_post[6:9].flatten()
+        # self.mx_mekf_post_tk.gyroBiasError_mean = mxk_post[9:].flatten()
 
         self.mx_posVel_post_tk.Pxx = Pxxk_post[:6,:6]
-        self.mx_mekf_post_tk.Pxx = Pxxk_post[6:,6:]
+        # self.mx_mekf_post_tk.Pxx = Pxxk_post[6:,6:]
 
         # update full state covariance
-        self.mx_full.Pxx = Pxxk_post
+        # self.mx_full.Pxx = Pxxk_post
 
          # if any negative diagonal entries, stop the update
         if np.any(self.mx_full.Pxx[np.diag_indices_from(self.mx_full.Pxx)] < 0.0):

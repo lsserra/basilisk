@@ -192,7 +192,7 @@ phi = np.linalg.norm(bodyErrorEulerVector)
 ehat = bodyErrorEulerVector/phi
 qbodyErrorEulerVector = Quaternion.from_axis_angle(axis=ehat.flatten(),angle=phi)
 mekfState0.q_BMref = q_BM_true_0 * qbodyErrorEulerVector
-
+mekfState0.q_BMref = q_BM_true_0
 
 
 # sigmaAtt = 9.4e-6 # rad^2
@@ -315,7 +315,7 @@ for i, tk in enumerate(timeData):
                 measTime=tk)
             didUpdate = True
             stopTimeLimit = 16.0
-            runningPlots = True
+            runningPlots = False
             pauseTime = 1.
             if runningPlots and (tk>stopTimeLimit):
                 tSim = np.array(copy.deepcopy(plotSimTime))
@@ -329,9 +329,9 @@ for i, tk in enumerate(timeData):
                 # plt.pause(pauseTime)          # keep open 5 seconds
                 # plt.close('all') 
 
-                plotMekfAttitudeErrorAnd3Sigma(mekfStateList=copy.deepcopy(ekf.mekfState_log),
-                                            q_BM_TruthList=copy.deepcopy(q_BM_store),
-                                            t_TruthNpArray=tSim)
+                # plotMekfAttitudeErrorAnd3Sigma(mekfStateList=copy.deepcopy(ekf.mekfState_log),
+                #                             q_BM_TruthList=copy.deepcopy(q_BM_store),
+                #                             t_TruthNpArray=tSim)
                 # plt.show(block=False)   # display immediately
                 # plt.pause(pauseTime)          # keep open 5 seconds
                 # plt.close('all') 
