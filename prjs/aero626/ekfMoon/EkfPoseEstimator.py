@@ -334,7 +334,9 @@ class EkfPoseEstimator():
         )
 
         q_BM_tk = sol.y[:, -1]
-        q_BM_tk_obj = Quaternion.from_array(q_BM_tk).normalize()
+        q_BM_tk_obj = Quaternion.from_array(q_BM_tk)
+        if np.abs(1. - q_BM_tk_obj.norm()) > 1e-7:
+            q_BM_tk_obj.normalize()
         
         # propagate error covarance
         wx,wy,wz = w_BM_B_corrected
@@ -389,14 +391,24 @@ class EkfPoseEstimator():
         self.mx_full.t = tk
 
 
+         # if any negative diagonal entries, stop the update
+        if tk >18.9:
+            foo =1
+        if np.any(self.mx_full.Pxx[np.diag_indices_from(self.mx_full.Pxx)] < 0.0):
+            raise ValueError(
+                f"Invalid covariance: Pxx has negative diagonal entries after measurement update at time {tk}"
+            )
+
+
         # log states after propagation
         self.posVelState_log.append(copy.deepcopy(self.mx_posVel_prior_tk))
         self.mekfState_log.append(copy.deepcopy(self.mx_mekf_prior_tk))
 
 
 
-    def updateWithLandmarks(self, z_meas_matrix, measTime):       
+    def updateWithLandmarks(self, z_meas_matrix, PvvBodyFrame, measTime):       
 
+        self.Pvv = PvvBodyFrame
         # get column of id's
         landmarkIds = z_meas_matrix[:,-1].astype(int)
         landmarkMeas = z_meas_matrix[:,:3]
@@ -518,8 +530,9 @@ class EkfPoseEstimator():
             
 
         # add attitude error correction to nominal quaternion
-        q_err = Quaternion(qv=self.mx_mekf_post_tk.angleError_mean.flatten(),
+        q_err = Quaternion(qv=self.mx_mekf_post_tk.angleError_mean.flatten()/2,
                            q0=1.0)
+        q_err = Quaternion()
         q_BM_post = (q_err*self.mx_mekf_prior_tk.q_BMref).normalize()
         q_BM_post.ensureScalarPos()
         self.mx_mekf_post_tk.q_BMref = copy.deepcopy(q_BM_post)

@@ -1,5 +1,5 @@
-import os, sys, copy
 import numpy as np
+import os, sys, copy
 import matplotlib.pyplot as plt
 from scipy.linalg import block_diag
 import pickle
@@ -174,9 +174,9 @@ posVelState0.Mdrdt_BM_M_mean = rng.normal(
 mekfState0 = MekfState(nx=nx)
 
 # covariance
-sigmaAtt = np.deg2rad(1) # deg -> rad
+sigmaAtt = np.array((np.deg2rad(10),np.deg2rad(10),np.deg2rad(10))) # deg -> rad
 sigmaGyroBias = np.deg2rad(.2)/3600 # deg/hr -> rad/s
-Pxx0 = block_diag(sigmaAtt*np.eye(3),sigmaGyroBias*np.eye(3))
+Pxx0 = block_diag(np.diag(sigmaAtt),sigmaGyroBias*np.eye(3))
 Pxx0 = Pxx0@Pxx0.T
 
 # init sc body attitude
@@ -297,8 +297,9 @@ for i, tk in enumerate(timeData):
     didUpdate = False
     if measCounter >= simIterPublishMeasBound:
         measCounter = 0
-        visibleLandmarks = getLandmarkMeasurements(
+        visibleLandmarks, PvvBodyFrame = getLandmarkMeasurements(
             r_BM_M_truth=r_BM_M,
+            v_BM_M_truth=Mdrdt_BM_M,
             q_BM_truth=q_BM_true,
         distanceThresholdKm=relativeDistanceThresholdKm,  #  km
             trueLandmarks=trueLandmarks,
@@ -308,9 +309,12 @@ for i, tk in enumerate(timeData):
             debugPlot = False
         )
         if visibleLandmarks.shape[0] > 0:
-            ekf.updateWithLandmarks(visibleLandmarks, measTime=tk)
+            ekf.updateWithLandmarks(
+                z_meas_matrix = visibleLandmarks, 
+                PvvBodyFrame=PvvBodyFrame,
+                measTime=tk)
             didUpdate = True
-            stopTimeLimit = 100
+            stopTimeLimit = 16.0
             runningPlots = True
             pauseTime = 1.
             if runningPlots and (tk>stopTimeLimit):
@@ -336,7 +340,7 @@ for i, tk in enumerate(timeData):
                     copy.deepcopy(ekf.innovation_log),
                     xLabel="Time [s]",
                     title="EKF Landmark Innovations",
-                    measurementNoiseSigma=oneSigmaLandmarkMeas_eachAxis
+                    # measurementNoiseSigma=oneSigmaLandmarkMeas_eachAxis
                 )
                 # plt.show(block=False)   # display immediately
                 # plt.pause(pauseTime)          # keep open 5 seconds

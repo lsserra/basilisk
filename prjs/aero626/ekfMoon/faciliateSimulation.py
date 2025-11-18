@@ -53,6 +53,7 @@ def generateLandmarks(
 ### return landmarks in view with Gaussian noise
 def getLandmarkMeasurements(
     r_BM_M_truth,
+    v_BM_M_truth,
     q_BM_truth,
     distanceThresholdKm,
     trueLandmarks,
@@ -98,33 +99,70 @@ def getLandmarkMeasurements(
     # Rotate relative vectors into the body frame
     r_LB_B = np.array([q_BM_truth.rotate(vec) for vec in r_LB_M])
 
-    # Normalize and find cone angles
-    r_hat_B = r_LB_B / np.linalg.norm(r_LB_B, axis=1, keepdims=True)
-    coneAxis_M = -r_BM_M_truth 
-    coneAxis_B = q_BM_truth.rotate(coneAxis_M)
-    coneAxis_B = coneAxis_B / np.linalg.norm(coneAxis_B)
-    cosAngles = r_hat_B @ coneAxis_B
-
-    # Filter by cone
-    cosHalfAngle = np.cos(np.deg2rad(halfAngleDeg))
-    withinCone = cosAngles > 0.0
+    r_LB_B_visible = r_LB_B
+    visibleIndices = landmarkIndices
 
 
-    r_LB_B_visible = r_LB_B[withinCone]
-    visibleIndices = landmarkIndices[withinCone]
+    # make LVLH frame
+    rhat = r_BM_M_truth / np.linalg.norm(r_BM_M_truth)
+    h = np.cross(r_BM_M_truth, v_BM_M_truth)
+    zhat = h / np.linalg.norm(h)                   # orbital angular momentum dir
+    rhat = rhat - zhat * np.dot(rhat, zhat)
+    rhat /= np.linalg.norm(rhat)
+    yhat = np.cross(zhat, rhat)
+    yhat /= np.linalg.norm(yhat)
 
-    # Add measurement noise
-    noisyMeasurements = rng.normal(
-        loc=r_LB_B_visible, scale=measurement1sigma, size=r_LB_B_visible.shape
+    # MCMF to LVLH
+    TLM = np.row_stack((rhat,yhat,zhat))
+    # MCMF to Body
+    TBM = q_BM_truth.to_dcm()
+    # Body to LVLH
+    TLB = (TLM@TBM.T)
+
+    # rotate into lvlh
+    r_LB_LVLH_visible = np.zeros_like(r_LB_B_visible)
+    nVisibleMeas = r_LB_B_visible.shape[0]
+    for i in range(nVisibleMeas):
+        r_LB_LVLH_visible[i,:] = (TLB @ r_LB_B_visible[i,:].T).reshape(1,3)
+    
+    # add noise to each axis
+    oneSigmaR = 20 # km
+    oneSigmaCrossTrack = 0.1 # km
+    oneSigmaLVLH = np.array((oneSigmaR,oneSigmaCrossTrack,oneSigmaCrossTrack))
+    oneSigmaBody = TLB.T @ oneSigmaLVLH
+    PvvBodyFrame = np.diag(oneSigmaBody**2)
+    # rhat
+    noisyMeasurementsLVLH_r = rng.normal(
+        loc=r_LB_LVLH_visible[:,0].reshape(-1,1), scale=oneSigmaLVLH[0], size=(nVisibleMeas,1)
+    )
+    # vhat
+    noisyMeasurementsLVLH_v = rng.normal(
+        loc=r_LB_LVLH_visible[:,1].reshape(-1,1), scale=oneSigmaLVLH[1], size=(nVisibleMeas,1)
     )
 
-    # Append landmark indices
+    # hhat
+    noisyMeasurementsLVLH_h = rng.normal(
+        loc=r_LB_LVLH_visible[:,2].reshape(-1,1), scale=oneSigmaLVLH[2], size=(nVisibleMeas,1)
+    )
 
-    if noisyMeasurements.shape[0]>1.:
-        noisyMeasurements = noisyMeasurements[:2,:]
+    # construct measurement matrix
+    noisyMeasurementsLVLH = np.column_stack((
+        noisyMeasurementsLVLH_r,
+        noisyMeasurementsLVLH_v,
+        noisyMeasurementsLVLH_h
+    ))
+    # rotate back into body frame
+    noisyMeasurementsBody = np.zeros_like(noisyMeasurementsLVLH)
+    for i in range(nVisibleMeas):
+        noisyMeasurementsBody[i,:] = (TLB.T @ noisyMeasurementsLVLH[i,:].T).reshape(1,3)
+
+
+    # Append landmark indices
+    if noisyMeasurementsBody.shape[0]>1.:
+        noisyMeasurementsBody = noisyMeasurementsBody[:2,:]
         visibleIndices = visibleIndices[:2]
         
-    outputZkMat = np.hstack((noisyMeasurements, visibleIndices.reshape(-1, 1)))
+    outputZkMat = np.hstack((noisyMeasurementsBody, visibleIndices.reshape(-1, 1)))
 
 
     ## plot the true landmarks as scattered plot 
@@ -136,64 +174,6 @@ def getLandmarkMeasurements(
             ax = fig.add_subplot(111, projection='3d')
             firstPass = False        
         # --- Plot ---
-        
-        # --- Draw viewing cone in M-frame ---
-        # Paramete`rs
-        L = distanceThresholdKm      # cone length (km)
-        theta = np.deg2rad(halfAngleDeg)
-        r = L * np.tan(theta)        # cone radius at distance L
-        n_pts = 40
-
-        # Parametric angle around cone
-        phi = np.linspace(0, 2*np.pi, n_pts)
-
-        # Cone surface in local axis-aligned frame: axis = +z
-        z = np.linspace(0, L, n_pts)
-        R = (z / L) * r
-
-        X = np.outer(R, np.cos(phi))
-        Y = np.outer(R, np.sin(phi))
-        Z = np.outer(z, np.ones_like(phi))
-
-        # Stack for rotation
-        local_points = np.column_stack([X.ravel(), Y.ravel(), Z.ravel()])
-
-        # === Rotate cone from +Z axis into coneAxis_M (in M-frame) ===
-        z_axis = np.array([0,0,1], dtype=float)
-        axis_M = coneAxis_M / np.linalg.norm(coneAxis_M)
-
-        v = np.cross(z_axis, axis_M)
-        c = z_axis.dot(axis_M)
-        theta= np.arccos(c)
-
-
-        if c > 0.999999:
-            # already aligned
-            q_align = Quaternion()
-        elif c < -0.999999:
-            # 180° flip: pick ANY perpendicular axis
-            q_align = Quaternion.from_axis_angle(np.array([1,0,0]), np.pi)
-        else:
-            t2 = theta/2
-            q_align = Quaternion(
-                qv = v * np.sin(t2),
-                q0 = np.cos(t2)
-            )
-            q_align.ensureScalarPos()
-            q_align = q_align.inverse()
-
-        # Rotate all cone points into M-frame
-        rot_points = np.array([q_align.rotate(p) for p in local_points])
-
-        # Shift cone origin to spacecraft location r_BM_M_truth (in M-frame)
-        rot_points += r_BM_M_truth.reshape(1,3)
-
-        # Reshape back to 2D grid for surface plotting
-        CX = rot_points[:,0].reshape(X.shape)
-        CY = rot_points[:,1].reshape(Y.shape)
-        CZ = rot_points[:,2].reshape(Z.shape)
-
-        
 
         # planet 
         # --- Planet sphere ---
@@ -216,9 +196,6 @@ def getLandmarkMeasurements(
         ax.scatter(r_BM_M_truth[0],r_BM_M_truth[1], r_BM_M_truth[2], 
                 c='r', s=30, label='Truth Position')
         
-        # --- Plot cone ---
-        #ax.plot_surface(CX, CY, CZ, alpha=0.25, linewidth=0)
-
         
 
 
@@ -231,7 +208,7 @@ def getLandmarkMeasurements(
         plt.show()
 
 
-    return outputZkMat
+    return outputZkMat, PvvBodyFrame
 
 
 ### MCMF propagation ###

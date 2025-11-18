@@ -134,7 +134,7 @@ def run(showPlots, savePkl, EarthAndMoonGrav):
     # initial tip off
     ### SPACECRAFT
     scObject.hub.sigma_BNInit = rbk.PRV2MRP([macros.D2R*0.0, 0.0, macros.D2R*0.0]) # rbk.C2MRP(np.identity(3))  # sigma_BN_B
-    scObject.hub.omega_BN_BInit = [macros.D2R*0.0, macros.D2R*0.0, macros.D2R*0.0]  # rad/s - omega_BN_B
+    scObject.hub.omega_BN_BInit = [macros.D2R*1.0, macros.D2R*1.0, macros.D2R*0.0]  # rad/s - omega_BN_B
     
 
     # set the simulation time
