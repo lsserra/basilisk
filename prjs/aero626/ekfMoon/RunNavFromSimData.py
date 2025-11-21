@@ -192,7 +192,7 @@ phi = np.linalg.norm(bodyErrorEulerVector)
 ehat = bodyErrorEulerVector/phi
 qbodyErrorEulerVector = Quaternion.from_axis_angle(axis=ehat.flatten(),angle=phi)
 mekfState0.q_BMref = q_BM_true_0 * qbodyErrorEulerVector
-mekfState0.q_BMref = q_BM_true_0
+# mekfState0.q_BMref = q_BM_true_0
 
 
 # sigmaAtt = 9.4e-6 # rad^2
@@ -362,8 +362,6 @@ for i, tk in enumerate(timeData):
     ekf.mx_posVel_prior_tk_ = ekf.mx_posVel_post_tk
     ekf.mx_mekf_prior_tk_ = ekf.mx_mekf_post_tk
 
-    if ekf.mx_posVel_prior_tk_.Pxx[0,0] > 200**2:
-        break
 
 
 

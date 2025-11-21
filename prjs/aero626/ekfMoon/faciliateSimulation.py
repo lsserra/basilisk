@@ -126,7 +126,7 @@ def getLandmarkMeasurements(
         r_LB_LVLH_visible[i,:] = (TLB @ r_LB_B_visible[i,:].T).reshape(1,3)
     
     # add noise to each axis
-    oneSigmaR = 20 # km
+    oneSigmaR = 10 # km
     oneSigmaCrossTrack = 0.1 # km
     oneSigmaLVLH = np.array((oneSigmaR,oneSigmaCrossTrack,oneSigmaCrossTrack))
     oneSigmaBody = TLB.T @ oneSigmaLVLH
