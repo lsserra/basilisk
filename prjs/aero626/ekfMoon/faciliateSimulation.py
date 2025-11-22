@@ -110,10 +110,13 @@ def getLandmarkMeasurements(
     rhat = rhat - zhat * np.dot(rhat, zhat)
     rhat /= np.linalg.norm(rhat)
     yhat = np.cross(zhat, rhat)
+    # yhat = yhat - rhat * np.dot(rhat, yhat)
     yhat /= np.linalg.norm(yhat)
+    
 
     # MCMF to LVLH
-    TLM = np.row_stack((rhat,yhat,zhat))
+    TLM = np.concatenate((rhat.reshape(-1,1),yhat.reshape(-1,1),zhat.reshape(-1,1)),axis=1).T
+    
     # MCMF to Body
     TBM = q_BM_truth.to_dcm()
     # Body to LVLH
@@ -163,6 +166,7 @@ def getLandmarkMeasurements(
         visibleIndices = visibleIndices[:1]
         
     outputZkMat = np.hstack((noisyMeasurementsBody, visibleIndices.reshape(-1, 1)))
+    # outputZkMat = np.hstack((r_LB_LVLH_visible[:1,:], visibleIndices.reshape(-1, 1)))
 
 
     ## plot the true landmarks as scattered plot 

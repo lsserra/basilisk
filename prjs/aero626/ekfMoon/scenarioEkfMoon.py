@@ -112,7 +112,7 @@ def run(showPlots, savePkl, EarthAndMoonGrav):
     oe.a = rLLO
     oe.e = 0.00001
     oe.i = 0.0 * macros.D2R
-    oe.Omega = 90.0 * macros.D2R
+    oe.Omega = 0.0 * macros.D2R
     oe.omega = 0.0 * macros.D2R
     oe.f = 0.0 * macros.D2R
     rN, vN = orbitalMotion.elem2rv(moonBody.mu, oe)

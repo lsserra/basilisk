@@ -48,9 +48,9 @@ print("Simulation data successfully unboxed.")
 
 ## limit sim time for testing ##
 # idxCap = 25
-# idxCap = 700
+idxCap = 700
 # idxCap = 1500
-idxCap = None
+# idxCap = None
 if idxCap is not None:
     timeData = timeData[:idxCap]
     sc_pos = sc_pos[:idxCap,:]
@@ -313,16 +313,15 @@ for i, tk in enumerate(timeData):
             halfAngleDeg=halfAngleConeFOVdeg,
             debugPlot = False
         )
-        # if visibleLandmarks.shape[0] > 0:
-        if False:
+        if visibleLandmarks.shape[0] > 0:
+        # if False:
             ekf.updateWithLandmarks(
                 z_meas_matrix = visibleLandmarks, 
                 PvvBodyFrame=PvvBodyFrame,
                 measTime=tk)
             didUpdate = True
             stopTimeLimit = 1.0
-            runningPlots = True
-            pauseTime = 1.
+            runningPlots = False
             if runningPlots and (tk>stopTimeLimit):
                 tSim = np.array(copy.deepcopy(plotSimTime))
                 ## plot data to analyze
@@ -331,26 +330,18 @@ for i, tk in enumerate(timeData):
                                             t_TruthNpArray=tSim,
                                             posVelEstListLog=copy.deepcopy(ekf.posVelState_log)
                                             )
-                # plt.show(block=False)   # display immediately
-                # plt.pause(pauseTime)          # keep open 5 seconds
-                # plt.close('all') 
-
-                # plotMekfAttitudeErrorAnd3Sigma(mekfStateList=copy.deepcopy(ekf.mekfState_log),
-                #                             q_BM_TruthList=copy.deepcopy(q_BM_store),
-                #                             t_TruthNpArray=tSim)
-                # plt.show(block=False)   # display immediately
-                # plt.pause(pauseTime)          # keep open 5 seconds
-                # plt.close('all') 
-
+               
+                plotMekfAttitudeErrorAnd3Sigma(mekfStateList=copy.deepcopy(ekf.mekfState_log),
+                                            q_BM_TruthList=copy.deepcopy(q_BM_store),
+                                            t_TruthNpArray=tSim)
+    
                 plot_landmark_innovations(
                     copy.deepcopy(ekf.innovation_log),
                     xLabel="Time [s]",
                     title="EKF Landmark Innovations",
                     # measurementNoiseSigma=oneSigmaLandmarkMeas_eachAxis
                 )
-                # plt.show(block=False)   # display immediately
-                # plt.pause(pauseTime)          # keep open 5 seconds
-                # plt.close('all') 
+                
                 plt.show()
                 
     if not didUpdate:

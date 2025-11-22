@@ -606,10 +606,6 @@ class EkfPoseEstimator():
         self.mx_mekf_post_tk.angleError_mean = np.zeros((3,1))
         self.mx_mekf_post_tk.gyroBiasError_mean = np.zeros((3,1))
 
-        # update solution times
-        self.mx_posVel_post_tk.t = measTime
-        self.mx_mekf_post_tk.t = measTime
-        self.mx_full.t = measTime
         
         # log updated states
         self.posVelState_log.append(copy.deepcopy(self.mx_posVel_post_tk))
