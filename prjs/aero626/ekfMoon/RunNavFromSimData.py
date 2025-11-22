@@ -47,10 +47,10 @@ q_BN_truth = sim_data["q_BN_truth"]
 print("Simulation data successfully unboxed.")
 
 ## limit sim time for testing ##
-# idxCap = 25
+idxCap = 25
 # idxCap = 700
 # idxCap = 1500
-idxCap = None
+# idxCap = None
 if idxCap is not None:
     timeData = timeData[:idxCap]
     sc_pos = sc_pos[:idxCap,:]
@@ -314,8 +314,8 @@ for i, tk in enumerate(timeData):
                 PvvBodyFrame=PvvBodyFrame,
                 measTime=tk)
             didUpdate = True
-            stopTimeLimit = 16.0
-            runningPlots = False
+            stopTimeLimit = 1.0
+            runningPlots = True
             pauseTime = 1.
             if runningPlots and (tk>stopTimeLimit):
                 tSim = np.array(copy.deepcopy(plotSimTime))
