@@ -568,12 +568,6 @@ class EkfPoseEstimator():
         # Basic Covariance update
         # Pxxk_post = Pxxk_prior - Pxzk@Kk.T - Kk@Pxzk.T + Kk @ Pzzk @ Kk.T
 
-        # unpack updated states
-        self.mx_posVel_post_tk.r_BM_M_mean = mxk_post[:3].flatten()
-        self.mx_posVel_post_tk.Mdrdt_BM_M_mean = mxk_post[3:6].flatten()
-        self.mx_mekf_post_tk.angleError_mean = mxk_post[6:9].flatten()
-        self.mx_mekf_post_tk.gyroBiasError_mean = mxk_post[9:].flatten()
-
         # unpack posterior
         self.unpackFullState(
             xin=mxk_post,
@@ -593,9 +587,11 @@ class EkfPoseEstimator():
         # add attitude error correction to nominal quaternion
         q_err = Quaternion(qv=self.mx_mekf_post_tk.angleError_mean.flatten()/2,
                            q0=1.0)
-        q_err = Quaternion()
-        q_BM_post = (q_err*self.mx_mekf_prior_tk.q_BMref).normalize()
+        q_BM_post = (q_err*self.mx_mekf_prior_tk.q_BMref)
         q_BM_post.ensureScalarPos()
+        if np.abs(q_BM_post.scalar()-1.)>1e-7:
+            q_BM_post.normalize()
+        
         self.mx_mekf_post_tk.q_BMref = copy.deepcopy(q_BM_post)
         # add gyro bias error correction to nominal bias
         gyroBias_post = (self.mx_mekf_prior_tk.gyroBiasRef.flatten() +

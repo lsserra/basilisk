@@ -48,8 +48,8 @@ print("Simulation data successfully unboxed.")
 
 ## limit sim time for testing ##
 # idxCap = 25
-idxCap = 700
-# idxCap = 1500
+# idxCap = 700
+idxCap = 1500
 # idxCap = None
 if idxCap is not None:
     timeData = timeData[:idxCap]
@@ -162,15 +162,15 @@ rdot_BM_M = q_MN_0.rotate(sc_vel[0,:])
 Mdrdt_BM_M0 = rdot_BM_M - (np.cross(w_MN_M, r_BM_M0))
 
 # fill Gaussian corrupted inital states
-# posVelState0.r_BM_M_mean = rng.normal(
-#         loc=r_BM_M0, scale=sigma_r/200, size=r_BM_M0.shape
-#     )
-# posVelState0.Mdrdt_BM_M_mean = rng.normal(
-#         loc=Mdrdt_BM_M0, scale=sigma_Mdrdt/200, size=Mdrdt_BM_M0.shape
-#     )
-posVelState0.r_BM_M_mean = r_BM_M0
+posVelState0.r_BM_M_mean = rng.normal(
+        loc=r_BM_M0, scale=sigma_r, size=r_BM_M0.shape
+    )
+posVelState0.Mdrdt_BM_M_mean = rng.normal(
+        loc=Mdrdt_BM_M0, scale=sigma_Mdrdt, size=Mdrdt_BM_M0.shape
+    )
+# posVelState0.r_BM_M_mean = r_BM_M0
 
-posVelState0.Mdrdt_BM_M_mean = Mdrdt_BM_M0
+# posVelState0.Mdrdt_BM_M_mean = Mdrdt_BM_M0
 
 
 
@@ -178,8 +178,11 @@ posVelState0.Mdrdt_BM_M_mean = Mdrdt_BM_M0
 ## Initial MEKF state obj ##
 mekfState0 = MekfState(nx=nx)
 
-# covariance
-sigmaAtt = np.array((np.deg2rad(10),np.deg2rad(10),np.deg2rad(10))) # deg -> rad
+# # covariance
+# sigmaAtt = np.array((np.deg2rad(10),np.deg2rad(10),np.deg2rad(10))) # deg -> rad
+# sigmaGyroBias = np.deg2rad(.2)/3600 # deg/hr -> rad/s
+
+sigmaAtt = np.array((np.deg2rad(.1),np.deg2rad(.1),np.deg2rad(.1))) # deg -> rad
 sigmaGyroBias = np.deg2rad(.2)/3600 # deg/hr -> rad/s
 Pxx0 = block_diag(np.diag(sigmaAtt),sigmaGyroBias*np.eye(3))
 Pxx0 = Pxx0@Pxx0.T
@@ -190,14 +193,14 @@ q_BN_0 = q_BN_truth[0]
 q_BM_true_0 = q_BN_0*q_NM_0
 
 # Gaussian currupted attitude
-# bodyErrorEulerVector= rng.normal(
-#         loc=np.zeros((3,1)), scale=np.deg2rad(0.1), size=np.zeros((3,1)).shape
-#     )
-# phi = np.linalg.norm(bodyErrorEulerVector)
-# ehat = bodyErrorEulerVector/phi
-# qbodyErrorEulerVector = Quaternion.from_axis_angle(axis=ehat.flatten(),angle=phi)
-# mekfState0.q_BMref = q_BM_true_0 * qbodyErrorEulerVector
-mekfState0.q_BMref = q_BM_true_0
+bodyErrorEulerVector= rng.normal(
+        loc=np.zeros((3,1)), scale=np.deg2rad(0.1), size=np.zeros((3,1)).shape
+    )
+phi = np.linalg.norm(bodyErrorEulerVector)
+ehat = bodyErrorEulerVector/phi
+qbodyErrorEulerVector = Quaternion.from_axis_angle(axis=ehat.flatten(),angle=phi)
+mekfState0.q_BMref = q_BM_true_0 * qbodyErrorEulerVector
+# mekfState0.q_BMref = q_BM_true_0
 
 
 # sigmaAtt = 9.4e-6 # rad^2
