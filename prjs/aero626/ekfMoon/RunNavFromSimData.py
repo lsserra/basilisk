@@ -47,10 +47,10 @@ q_BN_truth = sim_data["q_BN_truth"]
 print("Simulation data successfully unboxed.")
 
 ## limit sim time for testing ##
-idxCap = 25
+# idxCap = 25
 # idxCap = 700
 # idxCap = 1500
-# idxCap = None
+idxCap = None
 if idxCap is not None:
     timeData = timeData[:idxCap]
     sc_pos = sc_pos[:idxCap,:]
@@ -162,12 +162,17 @@ rdot_BM_M = q_MN_0.rotate(sc_vel[0,:])
 Mdrdt_BM_M0 = rdot_BM_M - (np.cross(w_MN_M, r_BM_M0))
 
 # fill Gaussian corrupted inital states
-posVelState0.r_BM_M_mean = rng.normal(
-        loc=r_BM_M0, scale=sigma_r/200, size=r_BM_M0.shape
-    )
-posVelState0.Mdrdt_BM_M_mean = rng.normal(
-        loc=Mdrdt_BM_M0, scale=sigma_Mdrdt/200, size=Mdrdt_BM_M0.shape
-    )
+# posVelState0.r_BM_M_mean = rng.normal(
+#         loc=r_BM_M0, scale=sigma_r/200, size=r_BM_M0.shape
+#     )
+# posVelState0.Mdrdt_BM_M_mean = rng.normal(
+#         loc=Mdrdt_BM_M0, scale=sigma_Mdrdt/200, size=Mdrdt_BM_M0.shape
+#     )
+posVelState0.r_BM_M_mean = r_BM_M0
+
+posVelState0.Mdrdt_BM_M_mean = Mdrdt_BM_M0
+
+
 
 
 ## Initial MEKF state obj ##
@@ -185,14 +190,14 @@ q_BN_0 = q_BN_truth[0]
 q_BM_true_0 = q_BN_0*q_NM_0
 
 # Gaussian currupted attitude
-bodyErrorEulerVector= rng.normal(
-        loc=np.zeros((3,1)), scale=np.deg2rad(0.1), size=np.zeros((3,1)).shape
-    )
-phi = np.linalg.norm(bodyErrorEulerVector)
-ehat = bodyErrorEulerVector/phi
-qbodyErrorEulerVector = Quaternion.from_axis_angle(axis=ehat.flatten(),angle=phi)
-mekfState0.q_BMref = q_BM_true_0 * qbodyErrorEulerVector
-# mekfState0.q_BMref = q_BM_true_0
+# bodyErrorEulerVector= rng.normal(
+#         loc=np.zeros((3,1)), scale=np.deg2rad(0.1), size=np.zeros((3,1)).shape
+#     )
+# phi = np.linalg.norm(bodyErrorEulerVector)
+# ehat = bodyErrorEulerVector/phi
+# qbodyErrorEulerVector = Quaternion.from_axis_angle(axis=ehat.flatten(),angle=phi)
+# mekfState0.q_BMref = q_BM_true_0 * qbodyErrorEulerVector
+mekfState0.q_BMref = q_BM_true_0
 
 
 # sigmaAtt = 9.4e-6 # rad^2
@@ -308,7 +313,8 @@ for i, tk in enumerate(timeData):
             halfAngleDeg=halfAngleConeFOVdeg,
             debugPlot = False
         )
-        if visibleLandmarks.shape[0] > 0:
+        # if visibleLandmarks.shape[0] > 0:
+        if False:
             ekf.updateWithLandmarks(
                 z_meas_matrix = visibleLandmarks, 
                 PvvBodyFrame=PvvBodyFrame,
