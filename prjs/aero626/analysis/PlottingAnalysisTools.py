@@ -175,7 +175,7 @@ def plotPosVelStateErrorAnd3sigma(r_TruthList,
 
 
 
-def plotMekfAttitudeErrorAnd3Sigma(mekfStateList,q_BM_TruthList,t_TruthNpArray):
+def plotMekfAttitudeErrorAnd3Sigma(mekfStateList,q_BM_TruthList,gryoBiasTruthList,t_TruthNpArray):
 
     ############################################
     # MEKF filter state
@@ -199,7 +199,9 @@ def plotMekfAttitudeErrorAnd3Sigma(mekfStateList,q_BM_TruthList,t_TruthNpArray):
     q_BM_truth_array = np.array(q_BM_TruthList)
     q_BM_interp1dObj_truth = interp1d(t_TruthNpArray, q_BM_truth_array, axis=0)
     q_BM_true_interp = q_BM_interp1dObj_truth(t_filt)
-    gryoBiasTruth = np.zeros(gyroBias_filt_array.shape) # TODO grab from basilisk
+    gryoBiasTruthArray = np.array(gryoBiasTruthList)
+    gryoBias_interp1dObj_truth = interp1d(t_TruthNpArray, gryoBiasTruthArray, axis=0)
+    gyroBias_true_interp = gryoBias_interp1dObj_truth(t_filt)
 
     # compute attitude error as principle rotation vector
     # body attitude error list
@@ -217,7 +219,7 @@ def plotMekfAttitudeErrorAnd3Sigma(mekfStateList,q_BM_TruthList,t_TruthNpArray):
     PRV_BprimeB_array = np.array(PRV_BprimeB_list)
 
     # gryo bias error 
-    gyroBiasError_array = gryoBiasTruth - gyroBias_filt_array
+    gyroBiasError_array = gyroBias_true_interp - gyroBias_filt_array
 
     nSolutions= len(q_BM_filt_list)
 
@@ -240,10 +242,10 @@ def plotMekfAttitudeErrorAnd3Sigma(mekfStateList,q_BM_TruthList,t_TruthNpArray):
 
     # Velocity error plots
     for i in range(3):
-        axs[i, 1].plot(t_filt, np.rad2deg(gyroBiasError_array[:,i]), 'k-', linewidth=1.8, label=f'{body_labels[i]}')
-        axs[i, 1].plot(t_filt, (sigma3_mekf[:, 3 + i]), 'r--', linewidth=1)
-        axs[i, 1].plot(t_filt, (-sigma3_mekf[:, 3 + i]), 'r--', linewidth=1,label='±3σ confidence')
-        axs[i, 1].set_ylabel(f'Gyro Frame {body_labels[i]} Bias Error [deg/s]')
+        axs[i, 1].plot(t_filt, np.rad2deg(gyroBiasError_array[:,i])*3600, 'k-', linewidth=1.8, label=f'{body_labels[i]}')
+        axs[i, 1].plot(t_filt, (sigma3_mekf[:, 3 + i])*3600, 'r--', linewidth=1)
+        axs[i, 1].plot(t_filt, (-sigma3_mekf[:, 3 + i])*3600, 'r--', linewidth=1,label='±3σ confidence')
+        axs[i, 1].set_ylabel(f'Gyro Frame {body_labels[i]} Bias Error [deg/hr]')
         axs[i, 1].grid(True)
         axs[i, 1].legend(loc='upper right')
         axs[0,1].set_title("Gryo Bias Error")

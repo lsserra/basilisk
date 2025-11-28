@@ -108,7 +108,7 @@ def run(showPlots, savePkl, EarthAndMoonGrav):
     # setup the orbit using classical orbit elements
     
     oe = orbitalMotion.ClassicElements()
-    rLLO = moonBody.radEquator + 14000       # meters
+    rLLO = moonBody.radEquator + 2000       # meters
     oe.a = rLLO
     oe.e = 0.00001
     oe.i = 0.0 * macros.D2R

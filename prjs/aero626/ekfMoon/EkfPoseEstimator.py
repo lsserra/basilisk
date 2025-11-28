@@ -21,82 +21,9 @@ from helpers.attitude.Quaternion import Quaternion
 #           called by solve_ivp
 ############################################
 
-def EkfPosVelProp(t, x_aug, MU_MOON, w_MN_M, Fw, Qww, nx):
-    """
-    Coupled propagation of mean and covariance for EKF in MCMF frame.
-    x_aug = [x, P_flat] 
-    where x = [r, rdot]
-
-    Fw is the determinstic process noise mapping matrix and is not a function of the mean state
-    Qww is the process noise PSD
-    """
-
-    # --- Unpack state ---
-    x = x_aug[:nx]
-    P_flat = x_aug[nx:]
-    P = P_flat.reshape((nx, nx))
-
-    # --- Unpack mean state ---
-    r = x[:3]
-    rdot = x[3:]
-    rnorm = np.linalg.norm(r)
-
-    # --- Mean dynamics ---
-    fgrav = -MU_MOON * r / rnorm**3
-    coriolis = 2 * np.cross(w_MN_M, rdot)
-    centripetal = np.cross(w_MN_M, np.cross(w_MN_M, r))
-    dr2dt2 = fgrav - coriolis - centripetal
-
-    xdot = np.concatenate((rdot.flatten(), dr2dt2.flatten()), axis=0)
-
-    # --- Compute dynamics Jacobian Fx ---
-    I3 = np.eye(3)
-    w_skew = np.array([
-        [0, -w_MN_M[2], w_MN_M[1]],
-        [w_MN_M[2], 0, -w_MN_M[0]],
-        [-w_MN_M[1], w_MN_M[0], 0]
-    ])
-    F11 = np.zeros((3, 3))
-    F12 = np.eye(3)
-    F22 = -2 * w_skew
-    F21 = -MU_MOON * ((I3 / rnorm**3) - ((3 * r @ r.T) / rnorm**5))
-    Fx = np.block([[F11, F12],
-                   [F21, F22]])
-
-
-                     # Defensive shape checks (will raise helpful errors if wrong)
-    if Fw.ndim != 2:
-        raise ValueError("Fw must be 2D; got shape {}".format(Fw.shape))
-    if Qww.shape[0] != Qww.shape[1]:
-        raise ValueError("Qww must be square")
-    Qterm = Fw @ Qww @ Fw.T
-    if Qterm.shape != (nx, nx):
-        raise ValueError("Process noise term shape mismatch: expected ({},{}) got {}".format(nx, nx, Qterm.shape))
-
-
-    # --- Covariance dynamics ---
-    Pdot = Fx @ P + P @ Fx.T + Fw @ Qww @ Fw.T
-
-    # --- Stack mean and covariance derivatives ---
-    x_aug_dot = np.concatenate((xdot.flatten(), Pdot.flatten()),axis=0)
-
-    return x_aug_dot
-
-
+## reference quaternion dynamics wrapper
 def dqdt_wrapper(t, q, w_BM_B):
     return Quaternion.dqdt(t, w_BM_B, q)
-
-def MekfCovProp(t,x_aug,nx,Fx,Fw,Qww):
-
-    P = x_aug.reshape((nx, nx))
-
-    # --- Covariance dynamics ---
-    Pdot = Fx @ P + P @ Fx.T + Fw @ Qww @ Fw.T
-
-    # --- Stack mean and covariance derivatives ---
-    x_aug_dot = Pdot.flatten()
-    
-    return x_aug_dot
 
 
 
@@ -444,6 +371,7 @@ class EkfPoseEstimator():
         self.mx_mekf_prior_tk.t = tk
         self.mx_mekf_prior_tk.q_BMref = copy.deepcopy(q_BM_tk_obj)
         self.mx_mekf_prior_tk.q_BMref.ensureScalarPos()
+        self.mx_mekf_prior_tk.gyroBiasRef = self.mx_mekf_prior_tk_.gyroBiasRef
 
 
         # log states after propagation
@@ -631,41 +559,3 @@ class EkfPoseEstimator():
 
 
 
-
-
-
-        
-            
-
-
-
-    # ---------------------------------------------------------
-    # Internal Logging Helpers
-    def _log_state(self, x, P, t):
-        self.state_log.append((t, x.copy()))
-        self.cov_log.append((t, P.copy()))
-
-    def _log_innovation(self, inn, t):
-        self.innovation_log.append((t, inn.copy()))
-
-    def _log_outlier(self, t, rejected):
-        """Log whether the measurement was rejected at this time."""
-        self.outlier_log.append((t, rejected))
-
-
-   # ---------------------------------------------------------
-    # Convenience accessors
-    def get_state_history(self):
-        times = np.array([t for t, _ in self.state_log])
-        states = np.hstack([x for _, x in self.state_log]).T  # shape (N, nx)
-        covs = [P for (_, P) in self.cov_log]
-        return times, states, covs  # list of Pxx for each time
-
-    def get_innovation_history(self):
-        times = np.array([t for t, _ in self.innovation_log])
-        innovations = np.hstack([inn for _, inn in self.innovation_log])
-        return times, innovations  # shape (nz, N)
-    def get_outlier_history(self):
-        times = np.array([t for t, _ in self.outlier_log])
-        rejected = np.array([flag for _, flag in self.outlier_log])
-        return times, rejected

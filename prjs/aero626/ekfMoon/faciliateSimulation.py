@@ -57,8 +57,8 @@ def getLandmarkMeasurements(
     q_BM_truth,
     distanceThresholdKm,
     trueLandmarks,
-    measurement1sigma,
-    halfAngleDeg=20.0,      # cone half-angle (degrees)
+    lvlh_oneSigmaArray,
+    maxNumMeasurements,
     randomSeed=None,
     debugPlot = False,
     firstPass =True
@@ -72,8 +72,7 @@ def getLandmarkMeasurements(
         q_BM_truth (Quaternion): True quaternion body-to-M frame
         distanceThresholdKm (float): Max distance to consider [km]
         trueLandmarks (np.ndarray): Nx3 array of landmark positions [km]
-        measurement1sigma (float): Std dev of measurement noise [km]
-        halfAngleDeg (float): Half-angle of visibility cone [deg]
+        lvlh_oneSigmaArray (array): Std dev of measurement noise in LVLH frame [km]
         randomSeed (int, optional): RNG seed
 
     Returns:
@@ -84,25 +83,22 @@ def getLandmarkMeasurements(
         np.random.seed(randomSeed)
     rng = np.random.default_rng(randomSeed)
 
+    ## filter candidiate landmarks by norm of relative position threshold
     # Compute relative position vectors in M frame
     r_LB_M = trueLandmarks - r_BM_M_truth
     distances = np.linalg.norm(r_LB_M, axis=1)
-
     # Filter by distance
     withinDistance = distances < distanceThresholdKm
     r_LB_M = r_LB_M[withinDistance]
     landmarkIndices = np.where(withinDistance)[0]
-
     if r_LB_M.shape[0] == 0:
         return np.empty((0, 4))
-
     # Rotate relative vectors into the body frame
     r_LB_B = np.array([q_BM_truth.rotate(vec) for vec in r_LB_M])
-
     r_LB_B_visible = r_LB_B
     visibleIndices = landmarkIndices
 
-
+    ## Create LVLH frame and apply measurement noise in this frame
     # make LVLH frame
     rhat = r_BM_M_truth / np.linalg.norm(r_BM_M_truth)
     h = np.cross(r_BM_M_truth, v_BM_M_truth)
@@ -110,17 +106,15 @@ def getLandmarkMeasurements(
     rhat = rhat - zhat * np.dot(rhat, zhat)
     rhat /= np.linalg.norm(rhat)
     yhat = np.cross(zhat, rhat)
-    # yhat = yhat - rhat * np.dot(rhat, yhat)
     yhat /= np.linalg.norm(yhat)
     
-
     # MCMF to LVLH
     TLM = np.concatenate((rhat.reshape(-1,1),yhat.reshape(-1,1),zhat.reshape(-1,1)),axis=1).T
-    
     # MCMF to Body
     TBM = q_BM_truth.to_dcm()
     # Body to LVLH
     TLB = (TLM@TBM.T)
+    T_body_to_lvlh_truth = TLB
 
     # rotate into lvlh
     r_LB_LVLH_visible = np.zeros_like(r_LB_B_visible)
@@ -129,9 +123,7 @@ def getLandmarkMeasurements(
         r_LB_LVLH_visible[i,:] = (TLB @ r_LB_B_visible[i,:].T).reshape(1,3)
     
     # add noise to each axis
-    oneSigmaR = 10 # km
-    oneSigmaCrossTrack = 0.1 # km
-    oneSigmaLVLH = np.array((oneSigmaR,oneSigmaCrossTrack,oneSigmaCrossTrack))
+    oneSigmaLVLH = lvlh_oneSigmaArray
     oneSigmaBody = TLB.T @ oneSigmaLVLH
     PvvBodyFrame = np.diag(oneSigmaBody**2)
     # rhat
@@ -160,13 +152,13 @@ def getLandmarkMeasurements(
         noisyMeasurementsBody[i,:] = (TLB.T @ noisyMeasurementsLVLH[i,:].T).reshape(1,3)
 
 
-    # Append landmark indices
-    if noisyMeasurementsBody.shape[0]>1.:
-        noisyMeasurementsBody = noisyMeasurementsBody[:1,:]
-        visibleIndices = visibleIndices[:1]
+    ## Limit the number of landmarks available
+    #  Append landmark indices
+    if noisyMeasurementsBody.shape[0]>maxNumMeasurements:
+        noisyMeasurementsBody = noisyMeasurementsBody[:maxNumMeasurements,:]
+        visibleIndices = visibleIndices[:maxNumMeasurements]
         
     outputZkMat = np.hstack((noisyMeasurementsBody, visibleIndices.reshape(-1, 1)))
-    # outputZkMat = np.hstack((r_LB_LVLH_visible[:1,:], visibleIndices.reshape(-1, 1)))
 
 
     ## plot the true landmarks as scattered plot 
@@ -212,7 +204,7 @@ def getLandmarkMeasurements(
         plt.show()
 
 
-    return outputZkMat, PvvBodyFrame
+    return outputZkMat, PvvBodyFrame, T_body_to_lvlh_truth
 
 
 ### MCMF propagation ###
