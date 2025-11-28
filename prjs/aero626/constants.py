@@ -24,6 +24,7 @@ PKL_TRUTH_POS_KEY          = "r_BM_M_TruthStoreList"
 PKL_TRUTH_ATT_KEY          = "q_BM_TruthStoreList"
 PKL_TRUTH_VEL_KEY        = "Mdrdt_BM_M_M_TruthStoreList"
 PKL_TRUTH_TBODY2LVLH_KEY = "TBodyToLVLH_TruthStoreList"
+PKL_TRUTH_LVLH_ONESIG_MEAS_NOISE = "lvlh_oneSigmaArrayInput_TruthStoreList"
 PKL_TRUTH_GRYOBIAS_KEY   = "trueGyroBias"
 
 

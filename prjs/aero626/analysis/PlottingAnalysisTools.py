@@ -13,7 +13,7 @@ from helpers.attitude.Quaternion import Quaternion
 def plot_landmark_innovations(
     innovations_log,
     xLabel="Time [s]",
-    title="Landmark Innovations, Body Frame Axis",
+    title="Landmark Innovations, Body Frame",
     unitString = "km",
     show_measurement_noise=True,
     measurementNoiseSigma=None,
@@ -86,6 +86,100 @@ def plot_landmark_innovations(
     fig.suptitle(title)
     plt.tight_layout()
     #plt.show()
+
+
+
+def plot_landmark_innovations_lvlh(
+    innovations_log,
+    T_BodyToLvlh_List,
+    lvlh_oneSigmaArrayInput,
+    xLabel="Time [s]",
+    title="Landmark Innovations, LVLH Frame",
+    unitString = "km",
+    show_measurement_noise=True,
+    show_confidence=True,
+    figsize=(8,5)
+):
+    """
+    Plot landmark innovations with optional ±3σ confidence bounds.
+
+    Args:
+        innovations_log (list[LandMarkInnovation]): list of innovation objects
+            with attributes:
+                - t : timestamp (float)
+                - innovation : (3,1) or (3,) numpy array
+                - innovationCov : (3,3) numpy array
+                - landmarkId : int
+        xLabel (str): x-axis label
+        title (str): plot title
+        show_measurement_noise (bool): plot gray ±3σ noise lines if True
+        measurementNoiseSigma (float|None): noise std deviation (km or m)
+        show_confidence (bool): plot ±3σ confidence lines from innovationCov
+        figsize (tuple): matplotlib figure size
+    """
+    lvlh_oneSigmaArrayInput = np.array(lvlh_oneSigmaArrayInput)
+
+    # --- Parse logs ---
+    innTime_array = np.array([entry.t for entry in innovations_log])
+    inn_array = np.array([entry.innovation.flatten() for entry in innovations_log])  # shape (N, 3)
+    
+    innSigma_array = np.array([
+        np.sqrt(np.diag(entry.innovationCov))
+        for entry in innovations_log
+    ])  # shape (N, 3)
+
+    # rotate inovations and covariance into truth lvlh frame
+    innLvlhArray = np.zeros_like(inn_array)
+    innSigmaLvlhArray = np.zeros_like(innSigma_array)
+    for i,TLBi in enumerate(T_BodyToLvlh_List):
+        innLvlhArray[i,:] = (TLBi @ inn_array[i,:].T).reshape(1,3)
+        innSigmaLvlhArray[i,:] = (TLBi @ innSigma_array[i,:].T).reshape(1,3)
+
+    # --- Plot ---
+    fig, axs = plt.subplots(4, 1, figsize=(figsize[0], figsize[1]+2), sharex=True)
+    labels = [
+    fr"$\hat{{r}}$ {unitString}",
+    fr"$\hat{{v}}$ {unitString}",
+    fr"$\hat{{h}}$ {unitString}",
+]
+    
+
+
+    for i, ax in enumerate(axs):
+        if i ==3:
+            continue
+        ax.scatter(innTime_array, innLvlhArray[:, i], marker='x', color='k', label=f'Innovation')
+
+        # Optional measurement noise bounds
+        if show_measurement_noise:
+            ax.plot(innTime_array ,3 * lvlh_oneSigmaArrayInput[:, i], color='gray', linestyle='--', label='Measurement Noise ±3σ')
+            ax.plot(innTime_array ,-3 * lvlh_oneSigmaArrayInput[:, i], color='gray', linestyle='--')
+
+        # Optional ±3σ filter confidence bounds
+        if show_confidence:
+            ax.plot(innTime_array, 3*innSigmaLvlhArray[:, i], '-r', label='Innovation ±3σ confidence')
+            ax.plot(innTime_array, -3*innSigmaLvlhArray[:, i], '-r')
+
+        ax.grid(True)
+        ax.set_ylabel(f'{labels[i]}')
+        if i == 0:
+            ax.legend(loc='upper right')
+        if i == len(axs)-1:
+            ax.set_xlabel(xLabel)
+
+    # --- 4th row: Landmark ID vs time ---
+    ax_id = axs[3]
+    landmark_ids = np.array([entry.landmarkId for entry in innovations_log])
+
+    ax_id.scatter(innTime_array, landmark_ids, marker='o', s=12, color='b')
+    ax_id.set_ylabel("ID")
+    ax_id.grid(True)
+    ax_id.set_xlabel(xLabel)
+
+
+
+    fig.suptitle(title)
+    plt.tight_layout()
 
 
 def plotPosVelStateErrorAnd3sigma(r_TruthList,

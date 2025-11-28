@@ -17,7 +17,12 @@ from helpers.attitude.Quaternion import Quaternion
 
 # simululation assistance
 from faciliateSimulation import generateLandmarks, propagateMCMF, getLandmarkMeasurements
-from prjs.aero626.analysis.PlottingAnalysisTools import plot_landmark_innovations, plotPosVelStateErrorAnd3sigma, plotMekfAttitudeErrorAnd3Sigma
+from prjs.aero626.analysis.PlottingAnalysisTools import (
+    plot_landmark_innovations,
+    plotPosVelStateErrorAnd3sigma,
+    plotMekfAttitudeErrorAnd3Sigma,
+    plot_landmark_innovations_lvlh
+    )
 
 
 from prjs.aero626.constants import (
@@ -127,6 +132,15 @@ def RunNavFromSimData(runDataDir, showPlotsBool = False, saveDataBool = True):
     q_BM_TruthStoreList = []
     SimTimeStore = []
 
+
+
+    # list for storing true gyro bias
+    gyroBiasTruthList = []
+
+    # list for LVLH measurement noise
+    lvlh_oneSigmaArrayInput_TruthStoreList = []
+    # list for true TLB (Body to LVLH)
+    TBodyToLVLH_TruthStoreList = []
 
 
 
@@ -256,14 +270,10 @@ def RunNavFromSimData(runDataDir, showPlotsBool = False, saveDataBool = True):
     # max number of landmark measurements
     MAX_NUM_LANDMARK_MEAS = 1
 
-    # list for storing true gyro bias
-    gyroBiasTruthList = []
     # add some bias to gryo
     trueBias = np.deg2rad(np.array((0.1,0.1,0.1)))/3600 # deg/hr to rad/s
 
 
-    # list for true TLB (Body to LVLH)
-    TBodyToLVLH_TruthStoreList = []
 
     # main sim loop
     for i, tk in enumerate(timeData):
@@ -287,7 +297,6 @@ def RunNavFromSimData(runDataDir, showPlotsBool = False, saveDataBool = True):
 
             SimTimeStore.append(tk)
 
-            TBodyToLVLH_TruthStoreList.append(TLB)
             continue
 
         tkm = timeData[i-1]
@@ -358,6 +367,7 @@ def RunNavFromSimData(runDataDir, showPlotsBool = False, saveDataBool = True):
             if visibleLandmarks.shape[0] > 0:
             # if False:
                 TBodyToLVLH_TruthStoreList.append(T_BodyToLvlh_truth)
+                lvlh_oneSigmaArrayInput_TruthStoreList.append(lvlh_oneSigmaArrayInput)
                 ekf.updateWithLandmarks(
                     z_meas_matrix = visibleLandmarks, 
                     PvvBodyFrame=PvvBodyFrame,
@@ -379,10 +389,15 @@ def RunNavFromSimData(runDataDir, showPlotsBool = False, saveDataBool = True):
                                                 t_TruthNpArray=tSim,
                                                 gryoBiasTruthList = gyroBiasTruthList)
         
-                    plot_landmark_innovations(
-                        copy.deepcopy(ekf.innovation_log),
-                        xLabel="Time [s]",
-                        title="EKF Landmark Innovations",
+                    # plot_landmark_innovations(
+                    #     copy.deepcopy(ekf.innovation_log),
+                    #     xLabel="Time [s]",
+                    #     title="EKF Landmark Innovations",
+                    # )
+                    plot_landmark_innovations_lvlh(
+                        innovations_log=copy.deepcopy(ekf.innovation_log),
+                        T_BodyToLvlh_List=copy.deepcopy(TBodyToLVLH_TruthStoreList),
+                        lvlh_oneSigmaArrayInput=copy.deepcopy(lvlh_oneSigmaArrayInput_TruthStoreList)
                     )
                     
                     plt.show()
@@ -417,6 +432,7 @@ def RunNavFromSimData(runDataDir, showPlotsBool = False, saveDataBool = True):
                             Mdrdt_BM_M_M_TruthStoreList=copy.deepcopy(Mdrdt_BM_M_M_TruthStoreList),
                             q_BM_TruthStoreList=copy.deepcopy(q_BM_TruthStoreList),
                             TBodyToLVLH_TruthStoreList=copy.deepcopy(TBodyToLVLH_TruthStoreList),
+                            lvlh_oneSigmaArrayInput_TruthStoreList = copy.deepcopy(lvlh_oneSigmaArrayInput_TruthStoreList),
                             trueGryoBiasList=copy.deepcopy(gyroBiasTruthList),
                             SimTimeStore=copy.deepcopy(SimTimeStore)
 
@@ -487,6 +503,7 @@ from prjs.aero626.constants import (
     PKL_TRUTH_VEL_KEY,
     PKL_TRUTH_GRYOBIAS_KEY,
     PKL_TRUTH_TBODY2LVLH_KEY,
+    PKL_TRUTH_LVLH_ONESIG_MEAS_NOISE,
     PKL_SIM_TIME_KEY
 )
 def save_filter_solution(run_dir,
@@ -495,6 +512,7 @@ def save_filter_solution(run_dir,
                          q_BM_TruthStoreList,
                          Mdrdt_BM_M_M_TruthStoreList,
                          TBodyToLVLH_TruthStoreList,
+                         lvlh_oneSigmaArrayInput_TruthStoreList,
                          trueGryoBiasList,     
                          SimTimeStore):
 
@@ -510,7 +528,9 @@ def save_filter_solution(run_dir,
         PKL_TRUTH_VEL_KEY:        copy.deepcopy(Mdrdt_BM_M_M_TruthStoreList),
         PKL_TRUTH_GRYOBIAS_KEY:   copy.deepcopy(trueGryoBiasList),
 
-        PKL_TRUTH_TBODY2LVLH_KEY:   copy.deepcopy(TBodyToLVLH_TruthStoreList),   # <--- NEW
+        PKL_TRUTH_TBODY2LVLH_KEY:   copy.deepcopy(TBodyToLVLH_TruthStoreList),
+
+        PKL_TRUTH_LVLH_ONESIG_MEAS_NOISE:copy.deepcopy(lvlh_oneSigmaArrayInput_TruthStoreList),
 
         PKL_SIM_TIME_KEY:           np.array(SimTimeStore)
     }
@@ -531,8 +551,8 @@ def save_filter_solution(run_dir,
 if __name__ == "__main__":
 
     ## config
-    saveDataBool = False
-    showPlotsBool = True
+    saveDataBool = True
+    showPlotsBool = False
     
 
 
