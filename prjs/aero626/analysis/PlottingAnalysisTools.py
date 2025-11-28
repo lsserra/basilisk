@@ -349,3 +349,48 @@ def plotMekfAttitudeErrorAnd3Sigma(mekfStateList,q_BM_TruthList,gryoBiasTruthLis
     fig.suptitle(f"MEKF Estimation Errors ±3σ\n{nSolutions} EKF Steps", fontsize=14)
 
     plt.tight_layout(rect=[0, 0, 1, 0.95])
+
+
+
+def plotAltitudeVsTime(
+        r_BM_M_truthList,
+        timeSec,
+        bodyRadiusKm
+):
+    """
+    Plot spacecraft altitude (km) vs time (sec).
+
+    Args:
+        r_BM_M_truthList (array-like): Nx3 position vectors in km.
+        timeSec (array-like): Time stamps in seconds (length N).
+        bodyRadiusKm (float): Radius of central body in km.
+
+    Returns:
+        fig, ax : Matplotlib figure and axis handles.
+    """
+
+    r_BM_M_truthList = np.asarray(r_BM_M_truthList)
+    timeSec = np.asarray(timeSec)
+
+    # Validate sizes
+    if len(r_BM_M_truthList) != len(timeSec):
+        raise ValueError(
+            f"Length mismatch: {len(r_BM_M_truthList)} position samples "
+            f"but {len(timeSec)} time samples."
+        )
+
+    # Compute radius magnitude
+    radii = np.linalg.norm(r_BM_M_truthList, axis=1)
+
+    # Altitude = radius - body radius
+    altitude = radii - bodyRadiusKm
+
+    # ---- Plot ----
+    fig, ax = plt.subplots(figsize=(10, 5))
+    ax.plot(timeSec, altitude)
+    ax.set_xlabel("Time [s]")
+    ax.set_ylabel("Altitude [km]")
+    ax.set_title("Altitude vs Time")
+    ax.grid(True)
+
+    return fig, ax

@@ -155,19 +155,19 @@ def run(showPlots, savePkl, EarthAndMoonGrav):
     gryoBias = np.deg2rad(0.1) / 3600 # deg/hr to rad/s
     # imu.senRotBias = np.array([0.,0.,0.])
     senRotNoiseStd = np.sqrt(10)*10**(-7) # rad/sec^(3/2)
-    walkBound = 0.01 # rad/s
+    # walkBound = 0.01 # rad/s
     PMatrix = np.eye(3)* senRotNoiseStd**2 # cholesky defactorization of noise covariance matrix, drives Gauss Markov Process
     L = np.linalg.cholesky(PMatrix)
-    L = np.zeros((3,3))
+    # L = np.zeros((3,3))
     imu.PMatrixGyro = L
     AMatrixGyro = np.zeros((3,3))
 
     senWalkNoiseStd = np.sqrt(10)*10**(-10) # rad/sec^(3/2)
     AMatrixGyro = np.eye(3)* senWalkNoiseStd**2 # cholesky defactorization of noise covariance matrix, drives Gauss Markov Process
     L = np.linalg.cholesky(AMatrixGyro)
-    # imu.AMatrixGyro = L
-    imu.AMatrixGyro = np.zeros((3,3))
-    imu.setErrorBoundsGyro([walkBound, walkBound, walkBound])
+    imu.AMatrixGyro = L
+    # imu.AMatrixGyro = np.zeros((3,3))
+    # imu.setErrorBoundsGyro([walkBound, walkBound, walkBound])
     imu.scStateInMsg.subscribeTo(scObject.scStateOutMsg)
     # Add IMU to simulation
     scSim.AddModelToTask(simTaskName, imu)
@@ -342,5 +342,5 @@ if __name__ == "__main__":
     run(
         True,        # show_plots
         True,      # save pkl file
-        False, # EarthAndMoonGrav
+        True, # EarthAndMoonGrav
     )

@@ -41,8 +41,8 @@ def RunNavFromSimData(runDataDir, showPlotsBool = False, saveDataBool = True):
 
 
 
-    with open("data/MoonCentralBody_MoonGrav.pkl", "rb") as f:
-    # with open("data/MoonCentralBody_MoonEarthGrav.pkl", "rb") as f:
+    # with open("data/MoonCentralBody_MoonGrav.pkl", "rb") as f:
+    with open("data/MoonCentralBody_MoonEarthGrav.pkl", "rb") as f:
         sim_data = pickle.load(f)
 
     timeData = sim_data["time"] * 1e-9 # to seconds
@@ -58,8 +58,8 @@ def RunNavFromSimData(runDataDir, showPlotsBool = False, saveDataBool = True):
     ## limit sim time for testing ##
     # idxCap = 25
     # idxCap = 700
-    idxCap = 1500
-    # idxCap = None
+    # idxCap = 1500
+    idxCap = None
     if idxCap is not None:
         timeData = timeData[:idxCap]
         sc_pos = sc_pos[:idxCap,:]

@@ -7,7 +7,8 @@ from prjs.aero626.analysis.PlottingAnalysisTools import(
  plot_landmark_innovations,
  plotPosVelStateErrorAnd3sigma,
  plotMekfAttitudeErrorAnd3Sigma,
- plot_landmark_innovations_lvlh)
+ plot_landmark_innovations_lvlh,
+ plotAltitudeVsTime)
 
 from prjs.aero626.constants import PATH2SIMDATADIR
 
@@ -60,7 +61,7 @@ def load_filter_solution(pkl_path):
 
 
 
-pth2data= os.path.join(PATH2SIMDATADIR,"sim-0002/FILTER_SOL_AND_SIM_TRUTH.pkl")
+pth2data= os.path.join(PATH2SIMDATADIR,"sim-0006/FILTER_SOL_AND_SIM_TRUTH.pkl")
 pkg = load_filter_solution(pth2data)
 
 posVelState   = pkg["posVelStateList"]
@@ -105,6 +106,14 @@ plot_landmark_innovations_lvlh(
                         T_BodyToLvlh_List=(truth_TBodyToLvlh),
                         lvlh_oneSigmaArrayInput=(lvlhOneSigMeasNoise)
                     )
+
+plotAltitudeVsTime(r_BM_M_truthList=truth_r,
+                   timeSec=t,
+                   bodyRadiusKm=1737.4, # km
+                   )
+
+## TODO: establish an inertial LVLH frame at first epoch
+# and make position plots relative to this
 
 
 plt.show()
