@@ -37,6 +37,7 @@ from prjs.aero626.constants import (
 def RunNavFromSimData(runDataDir, showPlotsBool = False, saveDataBool = True):
     # initalize random seed 
     random_seed = 42
+    random_seed = None
     rng = np.random.default_rng(random_seed)
 
 
@@ -57,6 +58,7 @@ def RunNavFromSimData(runDataDir, showPlotsBool = False, saveDataBool = True):
 
     ## limit sim time for testing ##
     # idxCap = 25
+    # idxCap = 125
     # idxCap = 700
     # idxCap = 1500
     idxCap = None
@@ -80,6 +82,10 @@ def RunNavFromSimData(runDataDir, showPlotsBool = False, saveDataBool = True):
     measDt = 1.0 / measFreq
     simIterPublishMeasBound = int(np.round(measDt / simdt))
     measCounter = 0
+
+    ## measurement outage duration
+    measOutDuration_idxArray = np.array(())
+
 
 
 
@@ -205,7 +211,7 @@ def RunNavFromSimData(runDataDir, showPlotsBool = False, saveDataBool = True):
     q_BM_true_0 = q_BN_0*q_NM_0
     # Gaussian currupted attitude
     bodyErrorEulerVector= rng.normal(
-            loc=np.zeros((3,1)), scale=np.deg2rad(0.1), size=np.zeros((3,1)).shape
+            loc=np.zeros((3,1)), scale=np.deg2rad(.1), size=np.zeros((3,1)).shape
         )
     phi = np.linalg.norm(bodyErrorEulerVector)
     ehat = bodyErrorEulerVector/phi
@@ -364,7 +370,7 @@ def RunNavFromSimData(runDataDir, showPlotsBool = False, saveDataBool = True):
                 debugPlot = False
             )
 
-            if visibleLandmarks.shape[0] > 0:
+            if visibleLandmarks.shape[0] > 0 and (i not in measOutDuration_idxArray):
             # if False:
                 TBodyToLVLH_TruthStoreList.append(T_BodyToLvlh_truth)
                 lvlh_oneSigmaArrayInput_TruthStoreList.append(lvlh_oneSigmaArrayInput)

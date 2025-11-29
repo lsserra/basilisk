@@ -61,7 +61,7 @@ def load_filter_solution(pkl_path):
 
 
 
-pth2data= os.path.join(PATH2SIMDATADIR,"sim-0006/FILTER_SOL_AND_SIM_TRUTH.pkl")
+pth2data= os.path.join(PATH2SIMDATADIR,"sim-0008/FILTER_SOL_AND_SIM_TRUTH.pkl")
 pkg = load_filter_solution(pth2data)
 
 posVelState   = pkg["posVelStateList"]
