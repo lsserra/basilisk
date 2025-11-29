@@ -9,7 +9,7 @@ import pickle
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
 
 # EKF
-from EkfPoseEstimator import EkfPosVelState, MekfState, EkfPoseEstimator
+from EkfPoseEstimator import EkfPosVelState, MekfState, EkfPoseEstimator, FullFilterState
 
 # attitude helpers
 from helpers.attitude import DCM
@@ -278,6 +278,37 @@ def RunNavFromSimData(runDataDir, showPlotsBool = False, saveDataBool = True):
 
     # add some bias to gryo
     trueBias = np.deg2rad(np.array((0.1,0.1,0.1)))/3600 # deg/hr to rad/s
+
+
+
+    ## EGMF Initialization ##
+    from prjs.aero626.egmf.MoonEGMF import MoonEGMF, MoonGaussianMixtureModel
+    emgf = MoonEGMF()
+    ## spread means accross 3 sigma with identical variance
+    Lx = 3
+    sigmaSpread = 3
+    mx0 = copy.deepcopy(ekf.mx_full.mx)
+    Pxx0 = copy.deepcopy(ekf.mx_full.Pxx)
+    gmm = MoonGaussianMixtureModel(Lx_input=Lx)
+    ws,ms, _ = gmm.gaussian_to_gmm(mx=mx0,
+                        Pxx=Pxx0,
+                        Lx=Lx,
+                        spread_sigma=sigmaSpread)
+    
+    ## loop to create full state objs
+    for i in range(len(ws)):
+        statei = FullFilterState()
+        statei.mx = ms[i]
+        statei.Pxx = Pxx0
+        statei.w = ws[i]
+        statei.t = 0
+
+        ## trasfer initial attitude and gyro bias error to reference states
+        
+
+        emgf.gaussianPdfList_.append(copy.deepcopy(statei))
+
+    
 
 
 

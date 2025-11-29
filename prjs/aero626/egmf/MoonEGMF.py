@@ -112,5 +112,49 @@ class MoonEGMF():
 
         return sample
     
+
+
+
+class MoonGaussianMixtureModel():
+    def __init__(self, Lx_input):
+        self._nx = 12
+        self.Lx = Lx_input
+        ## list of full state objs
+        self._gaussianPdfList = []
         
-    
+    @ staticmethod
+    def gaussian_to_gmm(mx, Pxx, Lx=5, spread_sigma=3.0):
+        mx = np.atleast_1d(mx)
+        n = mx.shape[0]
+
+        # --- Compute eigen decomposition of the covariance ---
+        vals, vecs = np.linalg.eigh(Pxx)  # vals = eigenvalues (variances), vecs = eigenvectors
+
+        stds = np.sqrt(vals)               # standard deviations along principal axes
+
+        # --- Select K points evenly spread across eigen-directions ---
+        # Example: K=5 produces positions [-3σ, -1.5σ, 0, 1.5σ, 3σ]
+        a = np.linspace(-spread_sigma, spread_sigma, Lx)
+
+        mxs = []
+        for i in range(K):
+            # Offset in principal-axis coordinates
+            offset = (a[i] * stds)
+            # Transform back to original coordinates
+            new_mx = mx + vecs @ offset
+            mxs.append(new_mx)
+
+        # All components share the original covariance (adjustable)
+        Pxx = [Pxx.copy() for _ in range(Lx)]
+
+        # Equal weights
+        weights = np.ones(Lx) / Lx
+
+        return weights, mxs, Pxx
+
+        
+
+
+
+
+        
