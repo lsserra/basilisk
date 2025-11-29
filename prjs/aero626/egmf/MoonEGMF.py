@@ -1,0 +1,116 @@
+import os, sys, copy
+import numpy as np
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
+from prjs.aero626.ekfMoon.EkfPoseEstimator import(
+    EkfPoseEstimator,
+    FullFilterState
+) 
+
+
+
+class MoonEGMF():
+    def __init__(self):
+        
+        ## list of gaussian pdfs
+        self.gaussianPdfList_ = []
+
+        ## pull in ekf for pdf propgation and update utility
+        self._ekf = None
+        self.Pwwkm1 = None
+
+        
+
+        
+        #### STORAGE ####
+        ## list to store gmLists at each epoch
+        self.storeGmList_ = []
+
+        ## list to store GM mean, cov at each up
+        self.storeGmBestGuess_ = []
+
+        ## list to store residual and residual
+
+
+    def PropagateMixtureEkf(self,toTime):
+        for k,g in enumerate(self.gaussianPdfList_):
+            self._ekf.mx_full = g
+            
+            self._ekf.propagate(toTime=toTime)
+            ## unique add discrete process noise
+            g.Pxx = g.Pxx + self.Pwwkm1
+            
+            
+
+        # compute some GM stats
+        mean,cov = self.computeBestEstMeanAndCovAtEpoch()
+        GMstate = FullFilterState()
+        GMstate.mx = mean
+        GMstate.Pxx = cov
+        GMstate.t = toTime
+        self.storeGmBestGuess_.append(copy.deepcopy(GMstate))
+
+   
+
+    def LandmarkMeasUpdateEkf(self, z_meas_matrix, PvvBodyFrame, measTime):
+        for k,g in enumerate(self.gaussianPdfList_):
+            self._ekf.mx = g
+            self._ekf.updateWithLandmarks(z_meas_matrix, PvvBodyFrame, measTime)
+
+        # update weights 
+        self.UpdateWeights()
+
+        # compute some GM stats
+        mean,cov = self.computeBestEstMeanAndCovAtEpoch()
+        GMstate = FullFilterState()
+        GMstate.mx = mean
+        GMstate.Pxx = cov
+        GMstate.t = measTime
+        self.storeGmBestGuess_.append(copy.deepcopy(GMstate))
+    
+   
+    def UpdateWeights(self):
+        # compute normalization factor
+        denom = 0.
+        for i, gm in enumerate(self.gaussianPdfList_):
+            denom += gm.k*gm.w
+
+        # normalize posterior weights
+        for i, gm in enumerate(self.gaussianPdfList_):
+            gm.w = gm.k*gm.w/denom
+    
+
+    def computeBestEstMeanAndCovAtEpoch(self): 
+        mean = np.zeros_like(self.gaussianPdfList_[0].mx)
+        for i, gm in enumerate(self.gaussianPdfList_):
+            mean += gm.w*gm.mx
+
+        cov = np.zeros_like(self.gaussianPdfList_[0].Pxx)
+        for i, gm in enumerate(self.gaussianPdfList_):
+            cov += gm.w*(gm.Pxx + (gm.mx - mean)*(gm.mx - mean).T)
+            
+        return mean, cov
+    
+    def sampleFromThisGaussianMixList(self,seed=None):
+        if seed is None:
+            rng = np.random.default_rng()
+        else:
+            rng = np.random.default_rng(seed=seed)
+         # Extract weights in the same order as gaussianPdfList_
+        weights = np.array([g.w for g in self.gaussianPdfList_], dtype=float)
+
+
+        # Draw a component index according to mixture weights
+        intArray =np.arange(0,len(self.gaussianPdfList_),1,dtype=int)
+        l = rng.choice(a=intArray, p=weights)
+
+        # Pull out mean and covariance
+        mean = self.gaussianPdfList_[l].mx
+        cov  = self.gaussianPdfList_[l].Pxx
+
+        # Sample from the selected Gaussian
+        sample = rng.normal(loc=mean, scale=np.sqrt(cov))
+
+        return sample
+    
+        
+    
