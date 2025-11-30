@@ -490,18 +490,39 @@ def RunNavFromSimData(runDataDir, showPlotsBool = False, saveDataBool = True):
 ## optionally save data 
     SimTimeStore = np.array(SimTimeStore)
 
-    if saveDataBool:
-        save_filter_solution(run_dir=runDataDir,
-                            ekf=copy.deepcopy(ekf),
-                            r_BM_M_TruthStoreList=copy.deepcopy(r_BM_M_TruthStoreList),
-                            Mdrdt_BM_M_M_TruthStoreList=copy.deepcopy(Mdrdt_BM_M_M_TruthStoreList),
-                            q_BM_TruthStoreList=copy.deepcopy(q_BM_TruthStoreList),
-                            TBodyToLVLH_TruthStoreList=copy.deepcopy(TBodyToLVLH_TruthStoreList),
-                            lvlh_oneSigmaArrayInput_TruthStoreList = copy.deepcopy(lvlh_oneSigmaArrayInput_TruthStoreList),
-                            trueGryoBiasList=copy.deepcopy(gyroBiasTruthList),
-                            SimTimeStore=copy.deepcopy(SimTimeStore)
 
-        )   
+
+
+    ## package EGMF pose solution
+    if saveDataBool:
+            
+        from prjs.aero626.analysis.AnalysisTools import PoseAnalyzer        
+        _poseAnalyzer = PoseAnalyzer()
+        pklPath = os.path.join(run_dir, _poseAnalyzer._pklName)
+        dataDict = _poseAnalyzer.CreatePklFileDataDict(
+            input_truth_r = np.array(r_BM_M_TruthStoreList),
+            input_truth_v = np.array(Mdrdt_BM_M_M_TruthStoreList),
+            input_truth_q = np.array(q_BM_TruthStoreList),
+            input_truth_t = SimTimeStore,
+
+            input_est_r = [s.mx[0:3].flatten() for s in egmf.storeGmBestGuess_],
+            input_est_v = [s.mx[3:6].flatten() for s in egmf.storeGmBestGuess_],
+            input_est_q = [s.q_BMref.as_array() for s in egmf.storeGmBestGuess_],
+            input_est_Pxx = [s.Pxx[:9,:9] for s in egmf.storeGmBestGuess_],
+            input_est_t = [s.t for s in egmf.storeGmBestGuess_],
+
+            input_ref_frame = "MCMF",
+            input_tgt_frame = "Body",
+            input_resolved_frame = "MCMF"
+        )
+        with open(pklPath, "wb") as f:
+            pickle.dump(dataDict, f)
+
+        _poseAnalyzer.LoadFromPklFile(pkl_path=pklPath)
+
+        foo=1
+
+
         
 ## optionally show post process plots 
     if showPlotsBool:
@@ -557,66 +578,11 @@ def get_next_sim_dir():
     return full_path
 
 
-## utility to write pkl files for ekf obj's
-from prjs.aero626.constants import (
-    EKF_PKL_FILENAME,
-    PKL_EKF_POSVEL_STATE_KEY,
-    PKL_EKF_MEKF_STATE_KEY,
-    PKL_INNOVATION_LIST_KEY,
-    PKL_TRUTH_POS_KEY,
-    PKL_TRUTH_ATT_KEY,
-    PKL_TRUTH_VEL_KEY,
-    PKL_TRUTH_GRYOBIAS_KEY,
-    PKL_TRUTH_TBODY2LVLH_KEY,
-    PKL_TRUTH_LVLH_ONESIG_MEAS_NOISE,
-    PKL_SIM_TIME_KEY
-)
-def save_filter_solution(run_dir,
-                         ekf,
-                         r_BM_M_TruthStoreList,
-                         q_BM_TruthStoreList,
-                         Mdrdt_BM_M_M_TruthStoreList,
-                         TBodyToLVLH_TruthStoreList,
-                         lvlh_oneSigmaArrayInput_TruthStoreList,
-                         trueGryoBiasList,     
-                         SimTimeStore):
-
-    save_path = os.path.join(run_dir, EKF_PKL_FILENAME)
-
-    data_dict = {
-        PKL_EKF_POSVEL_STATE_KEY:   copy.deepcopy(ekf.posVelState_log),
-        PKL_EKF_MEKF_STATE_KEY:     copy.deepcopy(ekf.mekfState_log),
-        PKL_INNOVATION_LIST_KEY:    copy.deepcopy(ekf.innovation_log),
-
-        PKL_TRUTH_POS_KEY:          copy.deepcopy(r_BM_M_TruthStoreList),
-        PKL_TRUTH_ATT_KEY:          copy.deepcopy(q_BM_TruthStoreList),
-        PKL_TRUTH_VEL_KEY:        copy.deepcopy(Mdrdt_BM_M_M_TruthStoreList),
-        PKL_TRUTH_GRYOBIAS_KEY:   copy.deepcopy(trueGryoBiasList),
-
-        PKL_TRUTH_TBODY2LVLH_KEY:   copy.deepcopy(TBodyToLVLH_TruthStoreList),
-
-        PKL_TRUTH_LVLH_ONESIG_MEAS_NOISE:copy.deepcopy(lvlh_oneSigmaArrayInput_TruthStoreList),
-
-        PKL_SIM_TIME_KEY:           np.array(SimTimeStore)
-    }
-
-    with open(save_path, "wb") as f:
-        pickle.dump(data_dict, f)
-
-    print(f"[INFO] Saved EKF filter solution to {save_path}")
-
-
-
-
-
-
-
-
 # main call 
 if __name__ == "__main__":
 
     ## config
-    saveDataBool = False
+    saveDataBool = True
     showPlotsBool = True
     
 
