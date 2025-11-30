@@ -398,7 +398,7 @@ def RunNavFromSimData(runDataDir, showPlotsBool = False, saveDataBool = True):
         w_BN_B = gyro_meas[i,:]
         w_BN_B += trueBias
         gyroBiasTruthList.append(trueBias)
-        # ekf.propagate(toTime=tk, w_BN_B_meas=w_BN_B)
+        ekf.propagate(toTime=tk, w_BN_B_meas=w_BN_B)
         egmf.PropagateMixtureEkf(toTime=tk, w_BN_B_meas=w_BN_B)
 
 
@@ -428,10 +428,10 @@ def RunNavFromSimData(runDataDir, showPlotsBool = False, saveDataBool = True):
             # if False:
                 TBodyToLVLH_TruthStoreList.append(T_BodyToLvlh_truth)
                 lvlh_oneSigmaArrayInput_TruthStoreList.append(lvlh_oneSigmaArrayInput)
-                # ekf.updateWithLandmarks(
-                #     z_meas_matrix = visibleLandmarks, 
-                #     PvvBodyFrame=PvvBodyFrame,
-                #     measTime=tk)
+                ekf.updateWithLandmarks(
+                    z_meas_matrix = visibleLandmarks, 
+                    PvvBodyFrame=PvvBodyFrame,
+                    measTime=tk)
                 egmf.LandmarkMeasUpdateEkf(
                     z_meas_matrix = visibleLandmarks, 
                     PvvBodyFrame=PvvBodyFrame,
@@ -495,21 +495,24 @@ def RunNavFromSimData(runDataDir, showPlotsBool = False, saveDataBool = True):
 
     ## package EGMF pose solution
     if saveDataBool:
-            
+
         from prjs.aero626.analysis.AnalysisTools import PoseAnalyzer        
-        _poseAnalyzer = PoseAnalyzer()
-        pklPath = os.path.join(run_dir, _poseAnalyzer._pklName)
-        dataDict = _poseAnalyzer.CreatePklFileDataDict(
+
+        ## EKF
+        _poseAnalyzerEkf = PoseAnalyzer()
+        _poseAnalyzerEkf._pklName = "EKF.pkl"
+        pklPath = os.path.join(run_dir, _poseAnalyzerEkf._pklName)
+        dataDict = _poseAnalyzerEkf.CreatePklFileDataDict(
             input_truth_r = np.array(r_BM_M_TruthStoreList),
             input_truth_v = np.array(Mdrdt_BM_M_M_TruthStoreList),
             input_truth_q = np.array(q_BM_TruthStoreList),
-            input_truth_t = SimTimeStore,
+            input_truth_t = np.array(SimTimeStore),
 
-            input_est_r = [s.mx[0:3].flatten() for s in egmf.storeGmBestGuess_],
-            input_est_v = [s.mx[3:6].flatten() for s in egmf.storeGmBestGuess_],
-            input_est_q = [s.q_BMref.as_array() for s in egmf.storeGmBestGuess_],
-            input_est_Pxx = [s.Pxx[:9,:9] for s in egmf.storeGmBestGuess_],
-            input_est_t = [s.t for s in egmf.storeGmBestGuess_],
+            input_est_r = np.array([s.r_BM_M_mean.flatten() for s in ekf.posVelState_log]),
+            input_est_v = np.array([s.Mdrdt_BM_M_mean.flatten() for s in ekf.posVelState_log]),
+            input_est_q = np.array([s.q_BMref.as_array() for s in ekf.mekfState_log]),
+            input_est_Pxx = np.array([s.Pxx for s in ekf.posVelState_log]),
+            input_est_t = np.array([s.t for s in ekf.posVelState_log]),
 
             input_ref_frame = "MCMF",
             input_tgt_frame = "Body",
@@ -518,7 +521,33 @@ def RunNavFromSimData(runDataDir, showPlotsBool = False, saveDataBool = True):
         with open(pklPath, "wb") as f:
             pickle.dump(dataDict, f)
 
-        _poseAnalyzer.LoadFromPklFile(pkl_path=pklPath)
+
+
+
+        ## EGMF
+        _poseAnalyzer = PoseAnalyzer()
+        _poseAnalyzer._pklName = "EGMF.pkl"
+        pklPath = os.path.join(run_dir, _poseAnalyzer._pklName)
+        dataDict = _poseAnalyzer.CreatePklFileDataDict(
+            input_truth_r = np.array(r_BM_M_TruthStoreList),
+            input_truth_v = np.array(Mdrdt_BM_M_M_TruthStoreList),
+            input_truth_q = np.array(q_BM_TruthStoreList),
+            input_truth_t = np.array(SimTimeStore),
+
+            input_est_r = np.array([s.mx[0:3].flatten() for s in egmf.storeGmBestGuess_]),
+            input_est_v = np.array([s.mx[3:6].flatten() for s in egmf.storeGmBestGuess_]),
+            input_est_q = np.array([s.q_BMref.as_array() for s in egmf.storeGmBestGuess_]),
+            input_est_Pxx = np.array([s.Pxx[:9,:9] for s in egmf.storeGmBestGuess_]),
+            input_est_t = np.array([s.t for s in egmf.storeGmBestGuess_]),
+
+            input_ref_frame = "MCMF",
+            input_tgt_frame = "Body",
+            input_resolved_frame = "MCMF"
+        )
+        with open(pklPath, "wb") as f:
+            pickle.dump(dataDict, f)
+
+        # _poseAnalyzer.LoadFromPklFile(pkl_path=pklPath)
 
         foo=1
 
