@@ -1,4 +1,8 @@
 import pickle, os, sys
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.interpolate import interp1d
+
 class PoseAnalyzer():
     ## define pkl accessing keys
     PKL_TRUTH_POS_KEY          = "truth_r"
@@ -27,7 +31,10 @@ class PoseAnalyzer():
         self._est_q = None
         self._est_Pxx = None
         self._est_t = None
-        
+
+        self._units_r = "km"
+        self._units_v = "km/s"
+        self._units_t = "s"
 
         self._ref_frame = ""
         self._tgt_frame = ""
@@ -62,7 +69,72 @@ class PoseAnalyzer():
         self._tgt_frame      = data.get(PoseAnalyzer.PKL_TGT_FRAME_KEY, "")
         self._resolved_frame = data.get(PoseAnalyzer.PKL_RESOLVED_FRAME_KEY, "")
     
-    def plotTransError3sigma():
+    def plotTransError3sigma(self):
+
+        ############################################
+        # Position and Velocity filter state
+        # extraction, interpolation of truth, and error calculation
+        ############################################
+        t_filt = self._est_t
+        P_diag_posVel = np.array([np.diag(P) for P in self._est_Pxx])
+        sigma3_posVel = 3 * np.sqrt(P_diag_posVel)
+
+        # Extract reference state
+        r_filt = self._est_r
+        v_filt = self._est_v
+
+        # Extract true state
+        r_truth = self._truth_r
+        v_truth = self._truth_v
+
+        r_interp_truth = interp1d(self._truth_t, r_truth, axis=0)
+        r_true_interp = r_interp_truth(t_filt)
+
+        v_interp_truth = interp1d(self._truth_t, v_truth, axis=0)
+        v_true_interp = v_interp_truth(t_filt)
+
+
+        # Compute estimation error
+        positionError = r_true_interp - r_filt
+        velocityError = v_true_interp - v_filt
+        nSolutions = len(r_filt)
+
+
+
+        ############################################
+        # Plot position and velocity estimation errors
+        ############################################
+        fig, axs = plt.subplots(3, 2, figsize=(11, 8), sharex=True)
+        pos_labels = ['X', 'Y', 'Z']
+        vel_labels = ['X', 'Y', 'Z']
+
+        # Position error plots
+        positionTitle = (f"Position of {self._tgt_frame} w.r.t. {self._ref_frame} resolved in {self._resolved_frame} Estimation Error")
+        for i in range(3):
+            axs[i, 0].plot(t_filt, positionError[:, i], 'k-', linewidth=1.8, label=f'{pos_labels[i]}')
+            axs[i, 0].plot(t_filt, sigma3_posVel[:, i], 'r--', linewidth=1)
+            axs[i, 0].plot(t_filt, -sigma3_posVel[:, i], 'r--', linewidth=1, label='±3σ confidence')
+            axs[i, 0].set_ylabel(f'{pos_labels[i]} [{self._units_r}]')
+            axs[i, 0].grid(True)
+            axs[i, 0].legend(loc='upper right')
+            axs[0,0].set_title(positionTitle)
+
+        # Velocity error plots
+        velocityTitle = (f"Velocity of {self._tgt_frame} w.r.t. {self._ref_frame} resolved in {self._resolved_frame} Estimation Error")
+        for i in range(3):
+            axs[i, 1].plot(t_filt, velocityError[:,i], 'k-', linewidth=1.8, label=f'{vel_labels[i]}')
+            axs[i, 1].plot(t_filt, sigma3_posVel[:, 3 + i], 'r--', linewidth=1)
+            axs[i, 1].plot(t_filt, -sigma3_posVel[:, 3 + i], 'r--', linewidth=1,label='±3σ confidence')
+            axs[i, 1].set_ylabel(f'{vel_labels[i]} [{self._units_v}]')
+            axs[i, 1].grid(True)
+            axs[i, 1].legend(loc='upper right')
+            axs[0,1].set_title(velocityTitle)
+
+        axs[-1, 0].set_xlabel(f'Time [{self._units_t}]')
+        axs[-1, 1].set_xlabel(f'Time [{self._units_t}]')
+        fig.suptitle(f"MCMF r_BM_M & Md(.)dt Estimation Errors ±3σ\n{nSolutions} EKF Steps", fontsize=14)
+
+        plt.tight_layout(rect=[0, 0, 1, 0.95])
         return
 
     
