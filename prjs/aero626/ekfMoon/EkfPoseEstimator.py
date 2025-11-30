@@ -279,7 +279,15 @@ class EkfPoseEstimator():
         self.mx_posVel_prior_tk_ = initPosVelState
         self.mx_mekf_prior_tk_ = initMekfState
         
-        # initialize full state
+        ## initialize full state
+        # mean
+        self.mx_full.mx[:6] = np.concatenate((
+            initPosVelState.r_BM_M_mean,
+            initPosVelState.Mdrdt_BM_M_mean),axis=0).reshape(-1,1)
+        
+        self.mx_full.q_BMref = initMekfState.q_BMref
+        self.mx_full.gyroBiasRef = initMekfState.gyroBiasRef
+        # covariance
         self.mx_full.Pxx = np.zeros((self.nx_full,self.nx_full))
         self.mx_full.Pxx[:6,:6] = initPosVelState.Pxx   
         self.mx_full.Pxx[6:,6:] = initMekfState.Pxx
@@ -378,14 +386,6 @@ class EkfPoseEstimator():
         x_sol_tk = x_aug_sol[:self.nx_full, -1]
         Pxx_sol_tk = x_aug_sol[self.nx_full:, -1].reshape(self.nx_full,self.nx_full)
 
-        # update pos vel state obj post propagation
-        self.unpackFullState(
-            xin=x_sol_tk,
-            Pin=Pxx_sol_tk,
-            t=tk,
-            transStateObj=self.mx_posVel_prior_tk,
-            mekfStateObj=self.mx_mekf_prior_tk
-        )
 
         # if any non-finite values, thrown an exception
         if np.any(Pxx_sol_tk[np.diag_indices_from(Pxx_sol_tk)] < 0.0):
@@ -396,7 +396,10 @@ class EkfPoseEstimator():
 
         # --- MEKF Quaternion Propagation --- #
         # ensure time is aligned with pos/vel
-        tkm_mekf = self.mx_mekf_prior_tk_.t
+        if self._GMF_FLAG:
+            tkm_mekf = self.mx_full.t
+        else:
+            tkm_mekf = self.mx_mekf_prior_tk_.t
         if not np.isclose(tkm,tkm_mekf,1e-8):
             raise ValueError("Propagation tk minus for pos/vel and MEKF states do not align.")
 
@@ -417,6 +420,16 @@ class EkfPoseEstimator():
         q_BM_tk_obj = Quaternion.from_array(q_BM_tk)
         if np.abs(1. - q_BM_tk_obj.norm()) > 1e-7:
             q_BM_tk_obj.normalize()
+
+
+        # update pos vel state obj post propagation
+        self.unpackFullState(
+            xin=x_sol_tk,
+            Pin=Pxx_sol_tk,
+            t=tk,
+            transStateObj=self.mx_posVel_prior_tk,
+            mekfStateObj=self.mx_mekf_prior_tk
+        )
 
         # update mekf prior state obj at end of prop
         self.mx_mekf_prior_tk.t = tk
@@ -446,7 +459,7 @@ class EkfPoseEstimator():
 
         ## handle GMF vs EKF impl
         if self._GMF_FLAG:
-            mr_BM_M_tk = self.mx_full[0:3].flatten()
+            mr_BM_M_tk = self.mx_full.mx[0:3].flatten()
             q_BM_ref = self.mx_full.q_BMref
 
         else:

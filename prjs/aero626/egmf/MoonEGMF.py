@@ -5,6 +5,7 @@ from prjs.aero626.ekfMoon.EkfPoseEstimator import(
     EkfPoseEstimator,
     FullFilterState
 ) 
+from helpers.attitude.Quaternion import Quaternion
 
 
 
@@ -31,11 +32,11 @@ class MoonEGMF():
         ## list to store residual and residual
 
 
-    def PropagateMixtureEkf(self,toTime):
+    def PropagateMixtureEkf(self,toTime,w_BN_B_meas):
         for k,g in enumerate(self.gaussianPdfList_):
             self._ekf.mx_full = g
             
-            self._ekf.propagate(toTime=toTime)
+            self._ekf.propagate(toTime=toTime,w_BN_B_meas=w_BN_B_meas)
             ## unique add discrete process noise
             g.Pxx = g.Pxx + self.Pwwkm1
             
@@ -43,17 +44,20 @@ class MoonEGMF():
 
         # compute some GM stats
         mean,cov = self.computeBestEstMeanAndCovAtEpoch()
-        GMstate = FullFilterState()
+        gyroBiasEst,q_BM_est= self.computeBestEstQuaternionAndGryoBias()
+        GMstate = FullFilterState(nx=len(self._ekf.mx_full.mx))
         GMstate.mx = mean
         GMstate.Pxx = cov
         GMstate.t = toTime
+        GMstate.gyroBiasRef = gyroBiasEst
+        GMstate.q_BMref = q_BM_est
         self.storeGmBestGuess_.append(copy.deepcopy(GMstate))
 
    
 
     def LandmarkMeasUpdateEkf(self, z_meas_matrix, PvvBodyFrame, measTime):
         for k,g in enumerate(self.gaussianPdfList_):
-            self._ekf.mx = g
+            self._ekf.mx_full = g
             self._ekf.updateWithLandmarks(z_meas_matrix, PvvBodyFrame, measTime)
 
         # update weights 
@@ -61,10 +65,13 @@ class MoonEGMF():
 
         # compute some GM stats
         mean,cov = self.computeBestEstMeanAndCovAtEpoch()
-        GMstate = FullFilterState()
+        gyroBiasEst,q_BM_est= self.computeBestEstQuaternionAndGryoBias()
+        GMstate = FullFilterState(nx=len(self._ekf.mx_full.mx))
         GMstate.mx = mean
         GMstate.Pxx = cov
         GMstate.t = measTime
+        GMstate.gyroBiasRef = gyroBiasEst
+        GMstate.q_BMref = q_BM_est
         self.storeGmBestGuess_.append(copy.deepcopy(GMstate))
     
    
@@ -89,6 +96,22 @@ class MoonEGMF():
             cov += gm.w*(gm.Pxx + (gm.mx - mean)*(gm.mx - mean).T)
             
         return mean, cov
+    
+    def computeBestEstQuaternionAndGryoBias(self):
+        # weighted average for gryo bias estimate
+        gyroBiasEst = np.zeros_like(self.gaussianPdfList_[0].gyroBiasRef)
+        for i, gm in enumerate(self.gaussianPdfList_):
+            gyroBiasEst += gm.w*gm.gyroBiasRef
+        # take most highest weighted est for now 
+        q_BM_est = Quaternion()
+        maxWeight = 0.
+        for i, gm in enumerate(self.gaussianPdfList_):
+            if gm.w > maxWeight:
+                q_BM_est = copy.deepcopy(gm.q_BMref)
+                maxWeight = gm.w
+
+        return gyroBiasEst, q_BM_est
+
     
     def sampleFromThisGaussianMixList(self,seed=None):
         if seed is None:
@@ -121,7 +144,7 @@ class MoonGaussianMixtureModel():
         self.Lx = Lx_input
         ## list of full state objs
         self._gaussianPdfList = []
-        
+
     @ staticmethod
     def gaussian_to_gmm(mx, Pxx, Lx=5, spread_sigma=3.0):
         mx = np.atleast_1d(mx)
@@ -137,11 +160,11 @@ class MoonGaussianMixtureModel():
         a = np.linspace(-spread_sigma, spread_sigma, Lx)
 
         mxs = []
-        for i in range(K):
+        for i in range(Lx):
             # Offset in principal-axis coordinates
             offset = (a[i] * stds)
             # Transform back to original coordinates
-            new_mx = mx + vecs @ offset
+            new_mx = mx.flatten() + vecs @ offset
             mxs.append(new_mx)
 
         # All components share the original covariance (adjustable)

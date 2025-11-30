@@ -37,7 +37,7 @@ from prjs.aero626.constants import (
 def RunNavFromSimData(runDataDir, showPlotsBool = False, saveDataBool = True):
     # initalize random seed 
     random_seed = 42
-    random_seed = None
+    # random_seed = None
     rng = np.random.default_rng(random_seed)
 
 
@@ -58,10 +58,10 @@ def RunNavFromSimData(runDataDir, showPlotsBool = False, saveDataBool = True):
 
     ## limit sim time for testing ##
     # idxCap = 25
-    # idxCap = 125
+    idxCap = 125
     # idxCap = 700
     # idxCap = 1500
-    idxCap = None
+    # idxCap = None
     if idxCap is not None:
         timeData = timeData[:idxCap]
         sc_pos = sc_pos[:idxCap,:]
@@ -283,7 +283,7 @@ def RunNavFromSimData(runDataDir, showPlotsBool = False, saveDataBool = True):
 
     ## EGMF Initialization ##
     from prjs.aero626.egmf.MoonEGMF import MoonEGMF, MoonGaussianMixtureModel
-    emgf = MoonEGMF()
+    egmf = MoonEGMF()
     ## spread means accross 3 sigma with identical variance
     Lx = 3
     sigmaSpread = 3
@@ -297,16 +297,37 @@ def RunNavFromSimData(runDataDir, showPlotsBool = False, saveDataBool = True):
     
     ## loop to create full state objs
     for i in range(len(ws)):
-        statei = FullFilterState()
+        statei = FullFilterState(nx=12)
         statei.mx = ms[i]
         statei.Pxx = Pxx0
         statei.w = ws[i]
-        statei.t = 0
+        statei.t = 0.
 
         ## trasfer initial attitude and gyro bias error to reference states
-        
+        # attitude
+        attErrEulerVec = statei.mx[6:9].flatten()
+        phi = np.linalg.norm(attErrEulerVec)
+        ehat = attErrEulerVec/phi
+        qbodyErrorEulerVector = Quaternion.from_axis_angle(axis=ehat.flatten(),angle=phi)
+        statei.q_BMref = statei.q_BMref * qbodyErrorEulerVector
+        # gyro bias
+        errorBias = statei.mx[9:].flatten()
+        statei.gyroBiasRef = (statei.gyroBiasRef.flatten() + errorBias).reshape(-1,1)
+        # set mekf error states to zero
+        statei.mx[6:] = np.zeros_like((statei.mx[6:]))
 
-        emgf.gaussianPdfList_.append(copy.deepcopy(statei))
+
+        egmf.gaussianPdfList_.append(copy.deepcopy(statei))
+
+        ## initialize egmf
+        egmf._ekf = EkfPoseEstimator()
+        egmf._ekf._GMF_FLAG = True
+        egmf._ekf.loadLandmarkMap(trueLandmarks) 
+
+        # additive process noise
+        Pwwkm1 = np.zeros_like((Pxx0))
+        egmf.Pwwkm1 = Pwwkm1
+    
 
     
 
@@ -377,7 +398,9 @@ def RunNavFromSimData(runDataDir, showPlotsBool = False, saveDataBool = True):
         w_BN_B = gyro_meas[i,:]
         w_BN_B += trueBias
         gyroBiasTruthList.append(trueBias)
-        ekf.propagate(toTime=tk, w_BN_B_meas=w_BN_B)
+        # ekf.propagate(toTime=tk, w_BN_B_meas=w_BN_B)
+        egmf.PropagateMixtureEkf(toTime=tk, w_BN_B_meas=w_BN_B)
+
 
         ### EKF Measurement Update ###
         measCounter += 1
@@ -405,10 +428,15 @@ def RunNavFromSimData(runDataDir, showPlotsBool = False, saveDataBool = True):
             # if False:
                 TBodyToLVLH_TruthStoreList.append(T_BodyToLvlh_truth)
                 lvlh_oneSigmaArrayInput_TruthStoreList.append(lvlh_oneSigmaArrayInput)
-                ekf.updateWithLandmarks(
+                # ekf.updateWithLandmarks(
+                #     z_meas_matrix = visibleLandmarks, 
+                #     PvvBodyFrame=PvvBodyFrame,
+                #     measTime=tk)
+                egmf.LandmarkMeasUpdateEkf(
                     z_meas_matrix = visibleLandmarks, 
                     PvvBodyFrame=PvvBodyFrame,
-                    measTime=tk)
+                    measTime=tk
+                    )
                 didUpdate = True
                 stopTimeLimit = 1.0
                 runningPlots = False
@@ -588,8 +616,8 @@ def save_filter_solution(run_dir,
 if __name__ == "__main__":
 
     ## config
-    saveDataBool = True
-    showPlotsBool = False
+    saveDataBool = False
+    showPlotsBool = True
     
 
 
