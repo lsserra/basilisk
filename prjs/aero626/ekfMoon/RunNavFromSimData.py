@@ -43,7 +43,8 @@ def RunNavFromSimData(runDataDir, showPlotsBool = False, saveDataBool = True):
 
 
     # with open("data/MoonCentralBody_MoonGrav.pkl", "rb") as f:
-    with open("data/MoonCentralBody_MoonEarthGrav.pkl", "rb") as f:
+    # with open("data/MoonCentralBody_MoonEarthGrav.pkl", "rb") as f:
+    with open("data/MoonCentralBody_MoonGrav_TrueGyro_NoRate_IdentityAtt.pkl", "rb") as f:
         sim_data = pickle.load(f)
 
     timeData = sim_data["time"] * 1e-9 # to seconds
@@ -191,9 +192,11 @@ def RunNavFromSimData(runDataDir, showPlotsBool = False, saveDataBool = True):
     posVelState0.r_BM_M_mean = rng.normal(
             loc=r_BM_M0, scale=sigma_r, size=r_BM_M0.shape
         )
+    posVelState0.r_BM_M_mean = r_BM_M0
     posVelState0.Mdrdt_BM_M_mean = rng.normal(
             loc=Mdrdt_BM_M0, scale=sigma_Mdrdt, size=Mdrdt_BM_M0.shape
         )
+    posVelState0.Mdrdt_BM_M_mean=Mdrdt_BM_M0
 
 
     ## Initial MEKF state obj ##
@@ -217,7 +220,7 @@ def RunNavFromSimData(runDataDir, showPlotsBool = False, saveDataBool = True):
     ehat = bodyErrorEulerVector/phi
     qbodyErrorEulerVector = Quaternion.from_axis_angle(axis=ehat.flatten(),angle=phi)
     mekfState0.q_BMref = q_BM_true_0 * qbodyErrorEulerVector
-
+    mekfState0.q_BMref = q_BM_true_0
 
 
     mekfState0.Pxx = Pxx0
@@ -285,8 +288,8 @@ def RunNavFromSimData(runDataDir, showPlotsBool = False, saveDataBool = True):
     from prjs.aero626.egmf.MoonEGMF import MoonEGMF, MoonGaussianMixtureModel
     egmf = MoonEGMF()
     ## spread means accross 3 sigma with identical variance
-    Lx = 3
-    sigmaSpread = 3
+    Lx = 1
+    sigmaSpread = 0.
     mx0 = copy.deepcopy(ekf.mx_full.mx)
     Pxx0 = copy.deepcopy(ekf.mx_full.Pxx)
     gmm = MoonGaussianMixtureModel(Lx_input=Lx)
@@ -305,12 +308,14 @@ def RunNavFromSimData(runDataDir, showPlotsBool = False, saveDataBool = True):
 
         ## trasfer initial attitude and gyro bias error to reference states
         # attitude
+        statei.q_BMref = copy.deepcopy(ekf.mx_full.q_BMref)
         attErrEulerVec = statei.mx[6:9].flatten()
         phi = np.linalg.norm(attErrEulerVec)
         ehat = attErrEulerVec/phi
         qbodyErrorEulerVector = Quaternion.from_axis_angle(axis=ehat.flatten(),angle=phi)
         statei.q_BMref = statei.q_BMref * qbodyErrorEulerVector
         # gyro bias
+        statei.gyroBiasRef = copy.deepcopy(ekf.mx_full.gyroBiasRef)
         errorBias = statei.mx[9:].flatten()
         statei.gyroBiasRef = (statei.gyroBiasRef.flatten() + errorBias).reshape(-1,1)
         # set mekf error states to zero
@@ -405,7 +410,8 @@ def RunNavFromSimData(runDataDir, showPlotsBool = False, saveDataBool = True):
         ### EKF Measurement Update ###
         measCounter += 1
         didUpdate = False
-        if measCounter >= simIterPublishMeasBound:
+        # if measCounter >= simIterPublishMeasBound:
+        if False:
             measCounter = 0
             # measurement noise = f(altitude)
             radiusMoonkm = 1737.4 # km
