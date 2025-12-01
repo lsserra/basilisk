@@ -328,11 +328,22 @@ def RunNavFromSimData(runDataDir, showPlotsBool = False, saveDataBool = True):
 
     # additive process noise
     Pwwkm1 = np.zeros_like((Pxx0))
-    Pwwkm1 = block_diag(Qww_posVel,Qmekf)
+    Pwwkm1Trans = block_diag(.1*np.eye(3),.01*np.eye(3))
+    Pwwkm1 = block_diag(Pwwkm1Trans,Qmekf)
     egmf.Pwwkm1 = Pwwkm1
+
+    # t=0, compute some GM stats
+    mean,cov = egmf.computeBestEstMeanAndCovAtEpoch()
+    gyroBiasEst,q_BM_est= egmf.computeBestEstQuaternionAndGryoBias()
+    GMstate = FullFilterState(nx=len(egmf._ekf.mx_full.mx))
+    GMstate.mx = mean
+    GMstate.Pxx = cov
+    GMstate.t = t0
+    GMstate.gyroBiasRef = gyroBiasEst
+    GMstate.q_BMref = q_BM_est
+    egmf.storeGmBestGuess_.append(copy.deepcopy(GMstate))
     
 
-    
 
 
 
