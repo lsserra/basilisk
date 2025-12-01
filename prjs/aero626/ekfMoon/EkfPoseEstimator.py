@@ -546,7 +546,7 @@ class EkfPoseEstimator():
         # note an implicit assumption of a single measurement here
         if self._GMF_FLAG:
             self.mx_full.k = gaussian_pdf(
-                x=landmarkMeas,
+                x=landmarkMeas.flatten(),
                 mean=mzk,
                 cov=Pzzk)
 

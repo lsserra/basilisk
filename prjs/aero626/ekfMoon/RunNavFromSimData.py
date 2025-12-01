@@ -58,9 +58,9 @@ def RunNavFromSimData(runDataDir, showPlotsBool = False, saveDataBool = True):
 
     ## limit sim time for testing ##
     # idxCap = 25
-    idxCap = 125
+    # idxCap = 125
     # idxCap = 700
-    # idxCap = 1500
+    idxCap = 1500
     # idxCap = None
     if idxCap is not None:
         timeData = timeData[:idxCap]

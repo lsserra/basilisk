@@ -76,14 +76,34 @@ class MoonEGMF():
     
    
     def UpdateWeights(self):
-        # compute normalization factor
-        denom = 0.
-        for i, gm in enumerate(self.gaussianPdfList_):
-            denom += gm.k*gm.w
+        # # compute normalization factor
+        # denom = 0.
+        # for i, gm in enumerate(self.gaussianPdfList_):
+        #     denom += gm.k*gm.w
 
-        # normalize posterior weights
-        for i, gm in enumerate(self.gaussianPdfList_):
-            gm.w = gm.k*gm.w/denom
+        # # normalize posterior weights
+        # for i, gm in enumerate(self.gaussianPdfList_):
+        #     gm.w = gm.k*gm.w/denom
+        # compute unnormalized weights safely
+        unnorm = np.array([gm.k * gm.w for gm in self.gaussianPdfList_], dtype=np.float64)
+
+        # avoid underflow: floor tiny weights
+        eps = 1e-300
+        unnorm = np.clip(unnorm, eps, None)
+
+        denom = np.sum(unnorm)
+
+        # protect denominator from underflow
+        if denom < eps or np.isnan(denom):
+            # fallback: assign equal weights
+            n = len(self.gaussianPdfList_)
+            for gm in self.gaussianPdfList_:
+                gm.w = 1.0 / n
+            return
+
+        # normalize
+        for gm, u in zip(self.gaussianPdfList_, unnorm):
+            gm.w = u / denom
     
 
     def computeBestEstMeanAndCovAtEpoch(self): 
