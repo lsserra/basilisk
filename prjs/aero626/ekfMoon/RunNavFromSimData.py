@@ -192,11 +192,9 @@ def RunNavFromSimData(runDataDir, showPlotsBool = False, saveDataBool = True):
     posVelState0.r_BM_M_mean = rng.normal(
             loc=r_BM_M0, scale=sigma_r, size=r_BM_M0.shape
         )
-    posVelState0.r_BM_M_mean = r_BM_M0
     posVelState0.Mdrdt_BM_M_mean = rng.normal(
             loc=Mdrdt_BM_M0, scale=sigma_Mdrdt, size=Mdrdt_BM_M0.shape
         )
-    posVelState0.Mdrdt_BM_M_mean=Mdrdt_BM_M0
 
 
     ## Initial MEKF state obj ##
@@ -220,7 +218,7 @@ def RunNavFromSimData(runDataDir, showPlotsBool = False, saveDataBool = True):
     ehat = bodyErrorEulerVector/phi
     qbodyErrorEulerVector = Quaternion.from_axis_angle(axis=ehat.flatten(),angle=phi)
     mekfState0.q_BMref = q_BM_true_0 * qbodyErrorEulerVector
-    mekfState0.q_BMref = q_BM_true_0
+    
 
 
     mekfState0.Pxx = Pxx0
@@ -321,17 +319,17 @@ def RunNavFromSimData(runDataDir, showPlotsBool = False, saveDataBool = True):
         # set mekf error states to zero
         statei.mx[6:] = np.zeros_like((statei.mx[6:]))
 
-
         egmf.gaussianPdfList_.append(copy.deepcopy(statei))
 
-        ## initialize egmf
-        egmf._ekf = EkfPoseEstimator()
-        egmf._ekf._GMF_FLAG = True
-        egmf._ekf.loadLandmarkMap(trueLandmarks) 
+    ## initialize egmf
+    egmf._ekf = EkfPoseEstimator()
+    egmf._ekf._GMF_FLAG = True
+    egmf._ekf.loadLandmarkMap(trueLandmarks) 
 
-        # additive process noise
-        Pwwkm1 = np.zeros_like((Pxx0))
-        egmf.Pwwkm1 = Pwwkm1
+    # additive process noise
+    Pwwkm1 = np.zeros_like((Pxx0))
+    Pwwkm1 = block_diag(Qww_posVel,Qmekf)
+    egmf.Pwwkm1 = Pwwkm1
     
 
     
@@ -410,8 +408,8 @@ def RunNavFromSimData(runDataDir, showPlotsBool = False, saveDataBool = True):
         ### EKF Measurement Update ###
         measCounter += 1
         didUpdate = False
-        # if measCounter >= simIterPublishMeasBound:
-        if False:
+        if measCounter >= simIterPublishMeasBound:
+        # if False:
             measCounter = 0
             # measurement noise = f(altitude)
             radiusMoonkm = 1737.4 # km
@@ -553,7 +551,6 @@ def RunNavFromSimData(runDataDir, showPlotsBool = False, saveDataBool = True):
         with open(pklPath, "wb") as f:
             pickle.dump(dataDict, f)
 
-        # _poseAnalyzer.LoadFromPklFile(pkl_path=pklPath)
 
         foo=1
 
@@ -581,10 +578,6 @@ def RunNavFromSimData(runDataDir, showPlotsBool = False, saveDataBool = True):
         )
         plt.show()
             
-
-
-
-
 
 
 

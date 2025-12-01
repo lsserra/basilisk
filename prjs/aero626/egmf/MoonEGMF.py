@@ -52,7 +52,6 @@ class MoonEGMF():
         GMstate.gyroBiasRef = gyroBiasEst
         GMstate.q_BMref = q_BM_est
         self.storeGmBestGuess_.append(copy.deepcopy(GMstate))
-
    
 
     def LandmarkMeasUpdateEkf(self, z_meas_matrix, PvvBodyFrame, measTime):
