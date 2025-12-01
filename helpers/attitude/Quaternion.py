@@ -44,7 +44,7 @@ class Quaternion:
         return self
     
     def ensureScalarPos(self):
-        if self.scalar() < 1e-6:
+        if self.scalar() < 1e-16:
             self.q *= -1.0    # flips all 4 components in place
         return self
 

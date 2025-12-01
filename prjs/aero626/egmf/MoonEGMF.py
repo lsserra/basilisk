@@ -122,7 +122,7 @@ class MoonEGMF():
         for i, gm in enumerate(self.gaussianPdfList_):
             gyroBiasEst += gm.w*gm.gyroBiasRef
         # take most highest weighted est for now 
-        q_BM_est = Quaternion()
+        # q_BM_est = Quaternion()
         maxWeight = 0.
         for i, gm in enumerate(self.gaussianPdfList_):
             if gm.w > maxWeight:

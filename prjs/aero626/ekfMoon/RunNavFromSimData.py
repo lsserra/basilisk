@@ -309,9 +309,10 @@ def RunNavFromSimData(runDataDir, showPlotsBool = False, saveDataBool = True):
         statei.q_BMref = copy.deepcopy(ekf.mx_full.q_BMref)
         attErrEulerVec = statei.mx[6:9].flatten()
         phi = np.linalg.norm(attErrEulerVec)
-        ehat = attErrEulerVec/phi
-        qbodyErrorEulerVector = Quaternion.from_axis_angle(axis=ehat.flatten(),angle=phi)
-        statei.q_BMref = statei.q_BMref * qbodyErrorEulerVector
+        if phi > 1e-16:
+            ehat = attErrEulerVec/phi
+            qbodyErrorEulerVector = Quaternion.from_axis_angle(axis=ehat.flatten(),angle=phi)
+            statei.q_BMref = statei.q_BMref * qbodyErrorEulerVector
         # gyro bias
         statei.gyroBiasRef = copy.deepcopy(ekf.mx_full.gyroBiasRef)
         errorBias = statei.mx[9:].flatten()
@@ -514,6 +515,14 @@ def RunNavFromSimData(runDataDir, showPlotsBool = False, saveDataBool = True):
         from prjs.aero626.analysis.AnalysisTools import PoseAnalyzer        
 
         ## EKF
+        # create 'full state covariance'
+        PxxEkfFull = []
+        for i,mTrans in enumerate(ekf.posVelState_log):
+            mMekf = ekf.mekfState_log[i]
+            PxxTrans = copy.deepcopy(mTrans.Pxx)
+            PxxMefk = copy.deepcopy(mMekf.Pxx)
+            PxxEkfFull.append(block_diag(PxxTrans,PxxMefk))
+
         _poseAnalyzerEkf = PoseAnalyzer()
         _poseAnalyzerEkf._pklName = "EKF.pkl"
         pklPath = os.path.join(run_dir, _poseAnalyzerEkf._pklName)
@@ -526,7 +535,7 @@ def RunNavFromSimData(runDataDir, showPlotsBool = False, saveDataBool = True):
             input_est_r = np.array([s.r_BM_M_mean.flatten() for s in ekf.posVelState_log]),
             input_est_v = np.array([s.Mdrdt_BM_M_mean.flatten() for s in ekf.posVelState_log]),
             input_est_q = np.array([s.q_BMref.as_array() for s in ekf.mekfState_log]),
-            input_est_Pxx = np.array([s.Pxx for s in ekf.posVelState_log]),
+            input_est_Pxx = np.array(PxxEkfFull),
             input_est_t = np.array([s.t for s in ekf.posVelState_log]),
 
             input_ref_frame = "MCMF",

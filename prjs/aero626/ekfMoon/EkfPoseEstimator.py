@@ -331,6 +331,7 @@ class EkfPoseEstimator():
         if self._GMF_FLAG:
             xRef_tk_ = self.mx_full.mx
             gyroBiasRef = self.mx_full.gyroBiasRef
+            q_BMref_tk_ = self.mx_full.q_BMref
         else:
             xRef_tk_ = np.concatenate((
                 self.mx_posVel_prior_tk_.r_BM_M_mean.flatten(),
@@ -338,6 +339,7 @@ class EkfPoseEstimator():
                 np.zeros((self.nx_mekf,1)).flatten()
                 ),axis=0)
             gyroBiasRef = self.mx_mekf_prior_tk_.gyroBiasRef
+            q_BMref_tk_ = self.mx_mekf_prior_tk_.q_BMref
 
         x_aug0 = np.concatenate((
         xRef_tk_.flatten(),                
@@ -348,7 +350,7 @@ class EkfPoseEstimator():
         # collect gyro measurement and correct with current bias est
         w_BN_B_corrected = (w_BN_B_meas - gyroBiasRef.flatten()).flatten()
         # rotate MCMF angular velocity into body frame
-        w_MN_B = self.mx_mekf_prior_tk_.q_BMref.rotate(self.w_MN_M)
+        w_MN_B = q_BMref_tk_.rotate(self.w_MN_M)
         w_BM_B_corrected = w_BN_B_corrected - w_MN_B
 
         # propagate the coupled mean and covariance dynamics
@@ -405,7 +407,7 @@ class EkfPoseEstimator():
 
         ## --- propagate quaternion --- ##
         
-        q_BM_tk_ = self.mx_mekf_prior_tk_.q_BMref.as_array()
+        q_BM_tk_ = q_BMref_tk_.as_array()
 
         sol = solve_ivp(
             fun=lambda t,x : dqdt_wrapper(t,x,w_BM_B=w_BM_B_corrected),

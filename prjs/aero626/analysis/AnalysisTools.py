@@ -3,6 +3,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
 
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
+# attitude helpers
+from helpers.attitude import DCM
+from helpers.attitude.Quaternion import Quaternion
+
 class PoseAnalyzer():
     ## define pkl accessing keys
     PKL_TRUTH_POS_KEY          = "truth_r"
@@ -35,6 +40,7 @@ class PoseAnalyzer():
         self._units_r = "km"
         self._units_v = "km/s"
         self._units_t = "s"
+        self._units_att = "deg"
 
         self._ref_frame = ""
         self._tgt_frame = ""
@@ -42,7 +48,12 @@ class PoseAnalyzer():
 
         self._dataDir = ""
 
-        self._pklName = "FILTER_SOL_AND_SIM_TRUTH.pkl"
+        self._solutionName = ""
+
+        ## optionally remove titles for clean figures
+        self._NO_TITLE_FLAG = False
+
+        self._EXPORT_FIGURES_FLAG = False
 
         
 
@@ -107,37 +118,138 @@ class PoseAnalyzer():
         fig, axs = plt.subplots(3, 2, figsize=(11, 8), sharex=True)
         pos_labels = ['X', 'Y', 'Z']
         vel_labels = ['X', 'Y', 'Z']
+        legend_label = 'Est. Error'
 
+        # titles
+        if self._NO_TITLE_FLAG:
+            positionTitle = ''
+            velocityTitle = ''
+            figureTitle = ''
+        else:
+            positionTitle = (f"Position of {self._tgt_frame} w.r.t. {self._ref_frame} resolved in {self._resolved_frame} Estimation Error")
+            velocityTitle = (f"Velocity of {self._tgt_frame} w.r.t. {self._ref_frame} resolved in {self._resolved_frame} Estimation Error")
+            figureTitle = f"{self._solutionName} {self._resolved_frame} Frame Translational Estimation Error"
+        
         # Position error plots
-        positionTitle = (f"Position of {self._tgt_frame} w.r.t. {self._ref_frame} resolved in {self._resolved_frame} Estimation Error")
         for i in range(3):
-            axs[i, 0].plot(t_filt, positionError[:, i], 'k-', linewidth=1.8, label=f'{pos_labels[i]}')
+            
+            axs[i, 0].plot(t_filt, positionError[:, i], 'k-', linewidth=1.8, label=f'{legend_label}')
             axs[i, 0].plot(t_filt, sigma3_posVel[:, i], 'r--', linewidth=1)
             axs[i, 0].plot(t_filt, -sigma3_posVel[:, i], 'r--', linewidth=1, label='±3σ confidence')
             axs[i, 0].set_ylabel(f'{pos_labels[i]} [{self._units_r}]')
             axs[i, 0].grid(True)
-            axs[i, 0].legend(loc='upper right')
-            axs[0,0].set_title(positionTitle)
+            
+        axs[0, 0].legend(loc='upper right')
+        axs[0,0].set_title(positionTitle)
 
         # Velocity error plots
-        velocityTitle = (f"Velocity of {self._tgt_frame} w.r.t. {self._ref_frame} resolved in {self._resolved_frame} Estimation Error")
         for i in range(3):
-            axs[i, 1].plot(t_filt, velocityError[:,i], 'k-', linewidth=1.8, label=f'{vel_labels[i]}')
+            axs[i, 1].plot(t_filt, velocityError[:,i], 'k-', linewidth=1.8, label=f'{legend_label}')
             axs[i, 1].plot(t_filt, sigma3_posVel[:, 3 + i], 'r--', linewidth=1)
             axs[i, 1].plot(t_filt, -sigma3_posVel[:, 3 + i], 'r--', linewidth=1,label='±3σ confidence')
             axs[i, 1].set_ylabel(f'{vel_labels[i]} [{self._units_v}]')
             axs[i, 1].grid(True)
-            axs[i, 1].legend(loc='upper right')
-            axs[0,1].set_title(velocityTitle)
+            
+        axs[0, 1].legend(loc='upper right')
+        axs[0,1].set_title(velocityTitle)
 
         axs[-1, 0].set_xlabel(f'Time [{self._units_t}]')
         axs[-1, 1].set_xlabel(f'Time [{self._units_t}]')
-        fig.suptitle(f"MCMF r_BM_M & Md(.)dt Estimation Errors ±3σ\n{nSolutions} EKF Steps", fontsize=14)
+        fig.suptitle(figureTitle, fontsize=14)
 
         plt.tight_layout(rect=[0, 0, 1, 0.95])
         return
+    
+    def plotAttError3Sigma(self):
+
+        ############################################
+        # MEKF filter state
+        # extraction, interpolation of truth, and error calculation
+        ############################################
+        t_filt = self._est_t
+        P_diag_att = np.array([np.diag(P[6:,6:]) for P in self._est_Pxx])
+        # convert to deg
+        P_diag_att = np.rad2deg(np.rad2deg(P_diag_att))
+        sigma3_mekf = 3 * np.sqrt(P_diag_att)
+
+
+        # interpolate truth solution
+        q_BM_truth_array = self._truth_q
+        q_BM_interp1dObj_truth = interp1d(self._truth_t, q_BM_truth_array, axis=0)
+        q_BM_true_interp = q_BM_interp1dObj_truth(t_filt)
+        
+        # compute attitude error as principle rotation vector
+        # body attitude error list
+        PRV_BprimeB_list = []
+        for i in range(self._est_q.shape[0]):
+            # compute attitude error and store
+            q_BM_true = Quaternion.from_array(q_BM_true_interp[i,:]).normalize()
+            q_BM_filt = Quaternion.from_array(self._est_q[i,:])
+            prv_BprimeB = Quaternion.computeEulerVecAttErrorFromQuats(
+                q_ref=q_BM_true,
+                q_est=q_BM_filt
+            )
+            PRV_BprimeB_list.append(prv_BprimeB)
+
+        PRV_BprimeB_array = np.array(PRV_BprimeB_list)
+
+
+        nSolutions= len(self._est_q)
+
+        ############################################
+        # Plot attitude estimation errors
+        ############################################
+        fig, axs = plt.subplots(3, 1, figsize=(11, 8), sharex=True)
+        body_labels = ['X', 'Y', 'Z']
+        legend_label = 'Est. Error'
+
+        # titles
+        if self._NO_TITLE_FLAG:
+            attTitle = ''
+            figureTitle = ''
+        else:
+            attTitle = f"{self._tgt_frame} frame attitude error as principle rotation vector"
+            figureTitle =f"{self._solutionName} Frame {self._tgt_frame} w.r.t. {self._ref_frame} Estimation Error"
+            
+            
+        
+        # Position error plots
+        for i in range(3):
+            axs[i].plot(t_filt, np.rad2deg(PRV_BprimeB_array[:, i]), 'k-', linewidth=1.8, label=f'{legend_label}')
+            axs[i].plot(t_filt, (sigma3_mekf[:, i]), 'r--', linewidth=1)
+            axs[i].plot(t_filt, (-sigma3_mekf[:, i]), 'r--', linewidth=1, label='±3σ confidence')
+            axs[i].set_ylabel(f'{body_labels[i]} [{self._units_att}]')
+            axs[i].grid(True)
+        axs[0].legend(loc='upper right')
+        axs[0].set_title(attTitle)
+
+       
+
+        axs[-1].set_xlabel(f'Time [{self._units_t}]')
+        fig.suptitle(figureTitle, fontsize=14)
+
+        plt.tight_layout(rect=[0, 0, 1, 0.95])
 
     
+
+    
+    # gryoBiasTruthArray = np.array(gryoBiasTruthList)
+    # gryoBias_interp1dObj_truth = interp1d(t_TruthNpArray, gryoBiasTruthArray, axis=0)
+    # gyroBias_true_interp = gryoBias_interp1dObj_truth(t_filt)
+
+    #  # Velocity error plots
+    # for i in range(3):
+    #     axs[i, 1].plot(t_filt, np.rad2deg(gyroBiasError_array[:,i])*3600, 'k-', linewidth=1.8, label=f'{body_labels[i]}')
+    #     axs[i, 1].plot(t_filt, (sigma3_mekf[:, 3 + i])*3600, 'r--', linewidth=1)
+    #     axs[i, 1].plot(t_filt, (-sigma3_mekf[:, 3 + i])*3600, 'r--', linewidth=1,label='±3σ confidence')
+    #     axs[i, 1].set_ylabel(f'Gyro Frame {body_labels[i]} Bias Error [deg/hr]')
+    #     axs[i, 1].grid(True)
+    #     axs[i, 1].legend(loc='upper right')
+    #     axs[0,1].set_title("Gryo Bias Error")
+    # gryo bias error 
+        # gyroBiasError_array = gyroBias_true_interp - gyroBias_filt_array
+
+
     @staticmethod
     def ComputeResolvedToLVLH_DCM():
         T_LR = None
