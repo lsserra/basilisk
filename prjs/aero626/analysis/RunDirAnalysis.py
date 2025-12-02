@@ -1,11 +1,13 @@
 import sys, os
 import matplotlib.pyplot as plt
+import pickle
 
+import numpy as np
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
 PATH2SIMDATADIR = "/Users/lukeserrano/repos/personal/basilisk/prjs/aero626/data"
 
 
-runNum = 55
+runNum = 57
 pth2data= os.path.join(PATH2SIMDATADIR,f"sim-00{runNum}")
 
 
@@ -13,20 +15,84 @@ pth2data= os.path.join(PATH2SIMDATADIR,f"sim-00{runNum}")
 
 from prjs.aero626.analysis.AnalysisTools import PoseAnalyzer
 
+
+## EGMF
 egmfPA = PoseAnalyzer()
 pklPath = os.path.join(pth2data,"EGMF.pkl")
+
+# manually pull gyro data
+with open(pklPath, "rb") as f:
+            data = pickle.load(f)
+
+truth_gyroBias = data.get('truth_gyroBias', None)
+egmf_est_gyroBias = data.get('est_gyroBias', None)
+
 egmfPA._solutionName = "EGMF"
+egmfPA._EXPORT_FIGURES_FLAG = True
+egmfPA._dataDir = pth2data
 egmfPA.LoadFromPklFile(pkl_path=pklPath)
 egmfPA.plotTransError3sigma()
 egmfPA.plotAttError3Sigma()
 
+# gyro bias plot 
+# rad to deg
+RAD2DEG2_PER_S2_TO_DEG2_PER_HR2 = (180/np.pi)**2 * (3600**2)
+est_Pxx =egmfPA._est_Pxx[:,9:,9:] * RAD2DEG2_PER_S2_TO_DEG2_PER_HR2
+truth_gyroBias = np.rad2deg(truth_gyroBias)*3600
+egmf_est_gyroBias = np.rad2deg(egmf_est_gyroBias)*3600
+
+egmfPA.plot3DimVecError3Sigma(
+                            truth_v=truth_gyroBias,
+                            truth_t=egmfPA._truth_t,
+                            est_v=egmf_est_gyroBias,
+                            est_Pxx=est_Pxx,
+                            est_t=egmfPA._est_t,
+                            strFigureTitle='EGMF Gryo Bias Error',
+                            strXlabel='Time [s]',
+                            strYunits='[Deg/Hr]'
+        
+)
+
+
+## EKF
 ekfPA = PoseAnalyzer()
 pklPath = os.path.join(pth2data,"EKF.pkl")
+
+# manually pull gyro data
+with open(pklPath, "rb") as f:
+            data = pickle.load(f)
+
+truth_gyroBias = data.get('truth_gyroBias', None)
+ekf_est_gyroBias = data.get('est_gyroBias', None)
+
 ekfPA._solutionName = "EKF"
 # ekfPA._NO_TITLE_FLAG = True
+ekfPA._EXPORT_FIGURES_FLAG = True
+ekfPA._dataDir = pth2data
 ekfPA.LoadFromPklFile(pkl_path=pklPath)
 ekfPA.plotTransError3sigma()
 ekfPA.plotAttError3Sigma()
+
+
+# gyro bias plot 
+# rad to deg
+RAD2DEG2_PER_S2_TO_DEG2_PER_HR2 = (180/np.pi)**2 * (3600**2)
+est_Pxx =ekfPA._est_Pxx[:,9:,9:] * RAD2DEG2_PER_S2_TO_DEG2_PER_HR2
+
+truth_gyroBias = np.rad2deg(truth_gyroBias)*3600
+ekf_est_gyroBias = np.rad2deg(ekf_est_gyroBias)*3600
+
+ekfPA.plot3DimVecError3Sigma(
+                            truth_v=truth_gyroBias,
+                            truth_t=egmfPA._truth_t,
+                            est_v=ekf_est_gyroBias,
+                            est_Pxx=est_Pxx,
+                            est_t=ekfPA._est_t,
+                            strFigureTitle='EKF Gryo Bias Error',
+                            strXlabel='Time [s]',
+                            strYunits='Deg/Hr'
+        
+)
 
 
 

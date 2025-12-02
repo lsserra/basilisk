@@ -121,6 +121,7 @@ class PoseAnalyzer():
         legend_label = 'Est. Error'
 
         # titles
+        figureTitleOpt = f"{self._solutionName} {self._resolved_frame} Frame Translational Estimation Error"
         if self._NO_TITLE_FLAG:
             positionTitle = ''
             velocityTitle = ''
@@ -128,7 +129,7 @@ class PoseAnalyzer():
         else:
             positionTitle = (f"Position of {self._tgt_frame} w.r.t. {self._ref_frame} resolved in {self._resolved_frame} Estimation Error")
             velocityTitle = (f"Velocity of {self._tgt_frame} w.r.t. {self._ref_frame} resolved in {self._resolved_frame} Estimation Error")
-            figureTitle = f"{self._solutionName} {self._resolved_frame} Frame Translational Estimation Error"
+            figureTitle = figureTitleOpt 
         
         # Position error plots
         for i in range(3):
@@ -158,6 +159,12 @@ class PoseAnalyzer():
         fig.suptitle(figureTitle, fontsize=14)
 
         plt.tight_layout(rect=[0, 0, 1, 0.95])
+        # opt save
+        if self._EXPORT_FIGURES_FLAG:
+            fig_path = os.path.join(self._dataDir,'figures')
+            out_path = os.path.join(fig_path,f"{figureTitleOpt.replace(' ', '_')}.png")
+            plt.savefig(out_path, dpi=300, bbox_inches='tight')
+            print(f"Saved: {out_path}")
         return
     
     def plotAttError3Sigma(self):
@@ -204,12 +211,13 @@ class PoseAnalyzer():
         legend_label = 'Est. Error'
 
         # titles
+        figureTitleOpt = f"{self._solutionName} Frame {self._tgt_frame} w.r.t. {self._ref_frame} Estimation Error"
         if self._NO_TITLE_FLAG:
             attTitle = ''
             figureTitle = ''
         else:
             attTitle = f"{self._tgt_frame} frame attitude error as principle rotation vector"
-            figureTitle =f"{self._solutionName} Frame {self._tgt_frame} w.r.t. {self._ref_frame} Estimation Error"
+            figureTitle = figureTitleOpt 
             
             
         
@@ -230,24 +238,75 @@ class PoseAnalyzer():
 
         plt.tight_layout(rect=[0, 0, 1, 0.95])
 
-    
+    # opt save
+        if self._EXPORT_FIGURES_FLAG:
+            fig_path = os.path.join(self._dataDir,'figures')
+            out_path = os.path.join(fig_path,f"{figureTitleOpt.replace(' ', '_')}.png")
+            plt.savefig(out_path, dpi=300, bbox_inches='tight')
+            print(f"Saved: {out_path}")
+
+
+    def plot3DimVecError3Sigma(self,truth_v, truth_t, est_v, est_Pxx, est_t,
+                            strFigureTitle='',
+                            strXlabel='',
+                            strYunits=''
+                               ):
+
+        ############################################
+        # MEKF filter state
+        # extraction, interpolation of truth, and error calculation
+        ############################################
+        
+        P_diag = np.array([np.diag(P) for P in est_Pxx])
+        # convert to deg
+        P_diag = (P_diag)
+        sigma3 = 3 * np.sqrt(P_diag)
+
+
+        # interpolate truth solution
+        truth_inter_obj = interp1d(truth_t, truth_v, axis=0)
+        truth_interp_to_sol = truth_inter_obj(est_t)
+        
+        error = truth_interp_to_sol - est_v
+
+        ############################################
+        # Plot attitude estimation errors
+        ############################################
+        fig, axs = plt.subplots(3, 1, figsize=(11, 8), sharex=True)
+        axis_labels = ['X', 'Y', 'Z']
+        legend_label = 'Est. Error'
+
+        # titles
+        if self._NO_TITLE_FLAG:
+            figureTitle = ''
+        else:
+            figureTitle = strFigureTitle
+            
+            
+        
+        # Position error plots
+        for i in range(3):
+            axs[i].plot(est_t, error[:,i], 'k-', linewidth=1.8, label=f'{legend_label}')
+            axs[i].plot(est_t, (sigma3[:, i]), 'r--', linewidth=1)
+            axs[i].plot(est_t, (-sigma3[:, i]), 'r--', linewidth=1, label='±3σ confidence')
+            axs[i].set_ylabel(f'{axis_labels[i]} [{strYunits}]')
+            axs[i].grid(True)
+        axs[0].legend(loc='upper right')
+
+        axs[-1].set_xlabel(strXlabel)
+        fig.suptitle(figureTitle, fontsize=14)
+
+        plt.tight_layout(rect=[0, 0, 1, 0.95])
+
+        # opt save
+        if self._EXPORT_FIGURES_FLAG:
+            fig_path = os.path.join(self._dataDir,'figures')
+            out_path = os.path.join(fig_path,f"{self._solutionName } {strFigureTitle.replace(' ', '_')}.png")
+            plt.savefig(out_path, dpi=300, bbox_inches='tight')
+            print(f"Saved: {out_path}")
+
 
     
-    # gryoBiasTruthArray = np.array(gryoBiasTruthList)
-    # gryoBias_interp1dObj_truth = interp1d(t_TruthNpArray, gryoBiasTruthArray, axis=0)
-    # gyroBias_true_interp = gryoBias_interp1dObj_truth(t_filt)
-
-    #  # Velocity error plots
-    # for i in range(3):
-    #     axs[i, 1].plot(t_filt, np.rad2deg(gyroBiasError_array[:,i])*3600, 'k-', linewidth=1.8, label=f'{body_labels[i]}')
-    #     axs[i, 1].plot(t_filt, (sigma3_mekf[:, 3 + i])*3600, 'r--', linewidth=1)
-    #     axs[i, 1].plot(t_filt, (-sigma3_mekf[:, 3 + i])*3600, 'r--', linewidth=1,label='±3σ confidence')
-    #     axs[i, 1].set_ylabel(f'Gyro Frame {body_labels[i]} Bias Error [deg/hr]')
-    #     axs[i, 1].grid(True)
-    #     axs[i, 1].legend(loc='upper right')
-    #     axs[0,1].set_title("Gryo Bias Error")
-    # gryo bias error 
-        # gyroBiasError_array = gyroBias_true_interp - gyroBias_filt_array
 
 
     @staticmethod

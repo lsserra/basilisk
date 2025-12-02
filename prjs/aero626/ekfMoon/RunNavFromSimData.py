@@ -542,6 +542,12 @@ def RunNavFromSimData(runDataDir, showPlotsBool = False, saveDataBool = True):
             input_tgt_frame = "Body",
             input_resolved_frame = "MCMF"
         )
+        ## lets append the gryo bias data dict to the pose one
+        gryoBiasDict= {
+            'truth_gyroBias': np.array(gyroBiasTruthList),
+            'est_gyroBias': np.array([s.gyroBiasRef.flatten() for s in ekf.mekfState_log])
+        }
+        dataDict = dataDict | gryoBiasDict
         with open(pklPath, "wb") as f:
             pickle.dump(dataDict, f)
 
@@ -561,13 +567,19 @@ def RunNavFromSimData(runDataDir, showPlotsBool = False, saveDataBool = True):
             input_est_r = np.array([s.mx[0:3].flatten() for s in egmf.storeGmBestGuess_]),
             input_est_v = np.array([s.mx[3:6].flatten() for s in egmf.storeGmBestGuess_]),
             input_est_q = np.array([s.q_BMref.as_array() for s in egmf.storeGmBestGuess_]),
-            input_est_Pxx = np.array([s.Pxx[:9,:9] for s in egmf.storeGmBestGuess_]),
+            input_est_Pxx = np.array([s.Pxx for s in egmf.storeGmBestGuess_]),
             input_est_t = np.array([s.t for s in egmf.storeGmBestGuess_]),
 
             input_ref_frame = "MCMF",
             input_tgt_frame = "Body",
             input_resolved_frame = "MCMF"
         )
+        ## lets append the gryo bias data dict to the pose one
+        gryoBiasDict= {
+            'truth_gyroBias': np.array(gyroBiasTruthList),
+            'est_gyroBias': np.array([s.gyroBiasRef.flatten() for s in egmf.storeGmBestGuess_])
+        }
+        dataDict = dataDict | gryoBiasDict
         with open(pklPath, "wb") as f:
             pickle.dump(dataDict, f)
 
@@ -640,6 +652,10 @@ if __name__ == "__main__":
     
     if saveDataBool:
         os.makedirs(run_dir, exist_ok=True)
+        # create figures dir
+        figDir= os.path.join(run_dir,'figures')
+        os.makedirs(figDir, exist_ok=True)
+
         # 3. Create empty config files (or write your config content)
         sim_cfg_path = os.path.join(run_dir, SIM_CONFIG_STRING)
         ekf_cfg_path = os.path.join(run_dir, EKF_CONFIG_STRING)
