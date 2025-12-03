@@ -43,8 +43,10 @@ def RunNavFromSimData(runDataDir, saveDataBool = True, EKF_ONLY_FLAG = False):
 
 
     # with open("data/MoonCentralBody_MoonGrav.pkl", "rb") as f:
-    with open("data/MoonCentralBody_MoonEarthGrav.pkl", "rb") as f:
+    # with open("data/MoonCentralBody_MoonEarthGrav.pkl", "rb") as f:
+    
     # with open("data/MoonCentralBody_MoonGrav_TrueGyro_NoRate_IdentityAtt.pkl", "rb") as f:
+    with open("data/MoonCentralBody_MoonEarthGrav_TenthPeriod.pkl", "rb") as f:
         sim_data = pickle.load(f)
 
     timeData = sim_data["time"] * 1e-9 # to seconds
@@ -61,8 +63,8 @@ def RunNavFromSimData(runDataDir, saveDataBool = True, EKF_ONLY_FLAG = False):
     # idxCap = 25
     # idxCap = 125
     # idxCap = 700
-    # idxCap = 1500
-    idxCap = None
+    idxCap = 1500
+    # idxCap = None
     if idxCap is not None:
         timeData = timeData[:idxCap]
         sc_pos = sc_pos[:idxCap,:]
@@ -428,7 +430,7 @@ def RunNavFromSimData(runDataDir, saveDataBool = True, EKF_ONLY_FLAG = False):
             normAltKm = np.linalg.norm(r_BM_M) - radiusMoonkm
             relativeDistanceThresholdKm = normAltKm + 100 # km
 
-            lvlh_oneSigmaArrayInput =np.array((normAltKm/10,normAltKm/20,normAltKm/20))
+            lvlh_oneSigmaArrayInput =np.array((normAltKm/100,normAltKm/200,normAltKm/200))
 
             visibleLandmarks, PvvBodyFrame, T_BodyToLvlh_truth = getLandmarkMeasurements(
                 r_BM_M_truth=r_BM_M,

@@ -133,6 +133,7 @@ def getLandmarkMeasurements(
     PvvBodyFrame = TLB.T @ PvvLVLH @ TLB
 
     # rhat
+    # oneSigmaLVLH = np.zeros_like(oneSigmaLVLH)
     noisyMeasurementsLVLH_r = rng.normal(
         loc=r_LB_LVLH_visible[:,0].reshape(-1,1), scale=oneSigmaLVLH[0], size=(nVisibleMeas,1)
     )
