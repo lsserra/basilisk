@@ -34,7 +34,7 @@ from prjs.aero626.constants import (
 )
 
 
-def RunNavFromSimData(runDataDir, showPlotsBool = False, saveDataBool = True):
+def RunNavFromSimData(runDataDir, saveDataBool = True):
     # initalize random seed 
     random_seed = 42
     # random_seed = None
@@ -470,11 +470,11 @@ def RunNavFromSimData(runDataDir, showPlotsBool = False, saveDataBool = True):
                                                 t_TruthNpArray=tSim,
                                                 gryoBiasTruthList = gyroBiasTruthList)
         
-                    # plot_landmark_innovations(
-                    #     copy.deepcopy(ekf.innovation_log),
-                    #     xLabel="Time [s]",
-                    #     title="EKF Landmark Innovations",
-                    # )
+                    plot_landmark_innovations(
+                        copy.deepcopy(ekf.innovation_log),
+                        xLabel="Time [s]",
+                        title="EKF Landmark Innovations",
+                    )
                     plot_landmark_innovations_lvlh(
                         innovations_log=copy.deepcopy(ekf.innovation_log),
                         T_BodyToLvlh_List=copy.deepcopy(TBodyToLVLH_TruthStoreList),
@@ -547,7 +547,15 @@ def RunNavFromSimData(runDataDir, showPlotsBool = False, saveDataBool = True):
             'truth_gyroBias': np.array(gyroBiasTruthList),
             'est_gyroBias': np.array([s.gyroBiasRef.flatten() for s in ekf.mekfState_log])
         }
-        dataDict = dataDict | gryoBiasDict
+        ## lets append the innovations
+        innDict = {
+            'inn_array': np.array([entry.innovation.flatten() for entry in ekf.innovation_log]),
+            'inn_t': np.array([entry.t for entry in ekf.innovation_log]),
+            'inn_cov': np.array([entry.innovationCov for entry in ekf.innovation_log]),
+            'inn_lm_id': np.array([entry.landmarkId.flatten() for entry in ekf.innovation_log]),
+            'meas_noise_one_sigma_lvlh': np.array((lvlh_oneSigmaArrayInput_TruthStoreList))
+        }
+        dataDict = dataDict | gryoBiasDict | innDict
         with open(pklPath, "wb") as f:
             pickle.dump(dataDict, f)
 
@@ -582,34 +590,7 @@ def RunNavFromSimData(runDataDir, showPlotsBool = False, saveDataBool = True):
         dataDict = dataDict | gryoBiasDict
         with open(pklPath, "wb") as f:
             pickle.dump(dataDict, f)
-
-
-        foo=1
-
-
-        
-## optionally show post process plots 
-    if showPlotsBool:
-        ## plot data to analyze
-        plotPosVelStateErrorAnd3sigma(r_TruthList=r_BM_M_TruthStoreList,
-                                    v_TruthList=Mdrdt_BM_M_M_TruthStoreList,
-                                    t_TruthNpArray=SimTimeStore,
-                                    posVelEstListLog=ekf.posVelState_log
-                                    )
-
-        plotMekfAttitudeErrorAnd3Sigma(mekfStateList=ekf.mekfState_log,
-                                    q_BM_TruthList=q_BM_TruthStoreList,
-                                    gryoBiasTruthList=gyroBiasTruthList,
-                                    t_TruthNpArray=SimTimeStore)
-
-        plot_landmark_innovations(
-            ekf.innovation_log,
-            xLabel="Time [s]",
-            title="EKF Landmark Innovations",
-            #measurementNoiseSigma=oneSigmaLandmarkMeas_eachAxis
-        )
-        plt.show()
-            
+    
 
 
 
@@ -667,8 +648,7 @@ if __name__ == "__main__":
     # run main simulation function
     RunNavFromSimData(
         runDataDir= run_dir,
-        saveDataBool=saveDataBool,
-        showPlotsBool=showPlotsBool
+        saveDataBool=saveDataBool
     )
     
 

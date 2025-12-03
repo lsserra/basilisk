@@ -123,9 +123,15 @@ def getLandmarkMeasurements(
         r_LB_LVLH_visible[i,:] = (TLB @ r_LB_B_visible[i,:].T).reshape(1,3)
     
     # add noise to each axis
-    oneSigmaLVLH = lvlh_oneSigmaArray
-    oneSigmaBody = TLB.T @ oneSigmaLVLH
-    PvvBodyFrame = np.diag(oneSigmaBody**2)
+    # oneSigmaLVLH = lvlh_oneSigmaArray
+    # oneSigmaBody = TLB.T @ oneSigmaLVLH
+    # PvvBodyFrame = np.diag(oneSigmaBody**2)
+
+    oneSigmaLVLH = lvlh_oneSigmaArray        # shape (3,)
+    PvvLVLH = np.diag(oneSigmaLVLH**2)       # 3×3 covariance in LVLH
+
+    PvvBodyFrame = TLB.T @ PvvLVLH @ TLB
+
     # rhat
     noisyMeasurementsLVLH_r = rng.normal(
         loc=r_LB_LVLH_visible[:,0].reshape(-1,1), scale=oneSigmaLVLH[0], size=(nVisibleMeas,1)

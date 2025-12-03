@@ -7,7 +7,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.
 PATH2SIMDATADIR = "/Users/lukeserrano/repos/personal/basilisk/prjs/aero626/data"
 
 
-runNum = 57
+runNum = 63
 pth2data= os.path.join(PATH2SIMDATADIR,f"sim-00{runNum}")
 
 
@@ -93,6 +93,34 @@ ekfPA.plot3DimVecError3Sigma(
                             strYunits='Deg/Hr'
         
 )
+
+
+## analyze ekf innovations
+# pull data
+
+inn_array = data.get('inn_array', None)
+inn_t = data.get('inn_t', None)
+inn_cov = data.get('inn_cov', None)
+inn_lm_id = data.get('inn_lm_id', None)
+meas_noise_one_sigma_lvlh = data.get('meas_noise_one_sigma_lvlh',None)
+
+ekfPA.plot_landmark_innovations_lvlh(
+    innArray = inn_array,
+    innTime_array = inn_t,
+    innCov = inn_cov,
+    landmark_ids = inn_lm_id,
+    est_r = ekfPA._est_r,
+    est_v = ekfPA._est_v,
+    est_q_array = ekfPA._est_q,
+    lvlh_oneSigmaArrayInput = meas_noise_one_sigma_lvlh,
+    xLabel="Time [s]",
+    title="Landmark Innovations LVLH Frame",
+    unitString = "km",
+    show_measurement_noise=True,
+    show_confidence=True,
+    figsize=(8,5),
+    _PLOT_BODY = False
+    )
 
 
 

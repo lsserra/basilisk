@@ -90,8 +90,13 @@ def plot_landmark_innovations(
 
 
 def plot_landmark_innovations_lvlh(
-    innovations_log,
-    T_BodyToLvlh_List,
+    innArray,
+    innTime_array,
+    innCov,
+    landmark_ids,
+    est_r,
+    est_v,
+    est_q_array,
     lvlh_oneSigmaArrayInput,
     xLabel="Time [s]",
     title="Landmark Innovations, LVLH Frame",
@@ -117,23 +122,19 @@ def plot_landmark_innovations_lvlh(
         show_confidence (bool): plot ±3σ confidence lines from innovationCov
         figsize (tuple): matplotlib figure size
     """
-    lvlh_oneSigmaArrayInput = np.array(lvlh_oneSigmaArrayInput)
-
-    # --- Parse logs ---
-    innTime_array = np.array([entry.t for entry in innovations_log])
-    inn_array = np.array([entry.innovation.flatten() for entry in innovations_log])  # shape (N, 3)
-    
-    innSigma_array = np.array([
-        np.sqrt(np.diag(entry.innovationCov))
-        for entry in innovations_log
-    ])  # shape (N, 3)
+    P_diag = (innCov)
+    innSigma3_array = 3 * np.sqrt(P_diag)
 
     # rotate inovations and covariance into truth lvlh frame
-    innLvlhArray = np.zeros_like(inn_array)
-    innSigmaLvlhArray = np.zeros_like(innSigma_array)
-    for i,TLBi in enumerate(T_BodyToLvlh_List):
-        innLvlhArray[i,:] = (TLBi @ inn_array[i,:].T).reshape(1,3)
-        innSigmaLvlhArray[i,:] = (TLBi @ innSigma_array[i,:].T).reshape(1,3)
+    innLvlhArray = np.zeros_like(innArray)
+    innSigmaLvlhArray = np.zeros_like(innCov)
+    for i in range(est_r.shape[0]):
+        T_BodyToLvlh_i = computeBodyToLvlhDCM(r_BM_M_truth=est_r[i,:].flatten(),
+                             v_BM_M_truth=est_v[i,:].flatten(),
+                             q_BM_truth=Quaternion.from_array(est_q_array[i,:].flatten()))
+        
+        innLvlhArray[i,:] = (T_BodyToLvlh_i @ innArray[i,:].T).reshape(1,3)
+        innSigmaLvlhArray[i,:] = (T_BodyToLvlh_i @ innSigmaLvlhArray[i,:].T).reshape(1,3)
 
     # --- Plot ---
     fig, axs = plt.subplots(4, 1, figsize=(figsize[0], figsize[1]+2), sharex=True)
@@ -169,17 +170,15 @@ def plot_landmark_innovations_lvlh(
 
     # --- 4th row: Landmark ID vs time ---
     ax_id = axs[3]
-    landmark_ids = np.array([entry.landmarkId for entry in innovations_log])
-
     ax_id.scatter(innTime_array, landmark_ids, marker='o', s=12, color='b')
     ax_id.set_ylabel("ID")
     ax_id.grid(True)
     ax_id.set_xlabel(xLabel)
 
-
-
     fig.suptitle(title)
     plt.tight_layout()
+
+
 
 
 def plotPosVelStateErrorAnd3sigma(r_TruthList,

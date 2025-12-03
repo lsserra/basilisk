@@ -301,18 +301,143 @@ class PoseAnalyzer():
         # opt save
         if self._EXPORT_FIGURES_FLAG:
             fig_path = os.path.join(self._dataDir,'figures')
-            out_path = os.path.join(fig_path,f"{self._solutionName } {strFigureTitle.replace(' ', '_')}.png")
+            out_path = os.path.join(fig_path,f"{self._solutionName}_{strFigureTitle.replace(' ', '_')}.png")
+            plt.savefig(out_path, dpi=300, bbox_inches='tight')
+            print(f"Saved: {out_path}")
+
+
+    ## TODO: MAKE THIS AN INHERITED CLASS METHOD
+    def plot_landmark_innovations_lvlh(self,
+    innArray,
+    innTime_array,
+    innCov,
+    landmark_ids,
+    est_r,
+    est_v,
+    est_q_array,
+    lvlh_oneSigmaArrayInput,
+    xLabel="Time [s]",
+    title="Landmark Innovations LVLH Frame",
+    unitString = "km",
+    show_measurement_noise=True,
+    show_confidence=True,
+    figsize=(8,5),
+    _PLOT_BODY=False
+    ):
+        
+        # rotate inovations and covariance into truth lvlh frame
+        innLvlhArray = np.zeros_like(innArray)
+        innCovLvlhArray = np.zeros_like(innCov)
+        for i,tk in enumerate(innTime_array):
+
+            # find all est_time <= innovation time
+            valid_idxs = np.where(self._est_t <= tk)[0]
+
+            # choose last = posteriori
+            last_idx = valid_idxs[-1]
+
+            est_r_k = est_r[last_idx]
+            est_v_k = est_v[last_idx]
+    
+            T_BodyToLvlh_i = PoseAnalyzer.ComputeResolvedToLVLH_DCM(r_BM_M_truth=est_r_k.flatten(),
+                                v_BM_M_truth=est_v_k.flatten(),
+                                q_BM_truth=Quaternion.from_array(est_q_array[i,:].flatten()))
+            
+            if _PLOT_BODY:
+                innLvlhArray[i,:] = innArray[i,:]
+                innCovLvlhArray[i,:,:] = innCov[i,:,:]
+                oneSigmaLVLH = lvlh_oneSigmaArrayInput[i,:]        # shape (3,)
+                PvvLVLH = np.diag(oneSigmaLVLH**2)
+                PvvBodyFrame = T_BodyToLvlh_i.T @ PvvLVLH @ T_BodyToLvlh_i   
+                lvlh_oneSigmaArrayInput[i,:] = np.sqrt(np.diag(PvvBodyFrame))  
+
+            else:
+                innLvlhArray[i,:] = (T_BodyToLvlh_i @ innArray[i,:].T).reshape(1,3)
+                innCovLvlhArray[i,:] = T_BodyToLvlh_i @ innCov[i,:,:] @ T_BodyToLvlh_i.T
+            
+        
+        # extract q 1 sigma Pzz
+        Pzz_diag = np.diagonal(innCovLvlhArray, axis1=1, axis2=2)
+
+        innSigmaLvlh_array = np.sqrt(Pzz_diag)
+
+        # --- Plot ---
+        fig, axs = plt.subplots(4, 1, figsize=(figsize[0], figsize[1]+2), sharex=True)
+        labels = [
+        fr"$\hat{{r}}$ {unitString}",
+        fr"$\hat{{v}}$ {unitString}",
+        fr"$\hat{{h}}$ {unitString}",
+        ]
+        
+
+        # titles
+        if self._NO_TITLE_FLAG:
+            figureTitle = ''
+        else:
+            figureTitle = title
+            
+            
+
+        for i in range(3):
+            axs[i].scatter(innTime_array, innLvlhArray[:, i], marker='x', color='k', label=f'Innovation')
+
+            # Optional measurement noise bounds
+            if show_measurement_noise:
+                axs[i].plot(innTime_array ,3 * lvlh_oneSigmaArrayInput[:, i], color='gray', linestyle='--', label='Measurement Noise ±3σ')
+                axs[i].plot(innTime_array ,-3 * lvlh_oneSigmaArrayInput[:, i], color='gray', linestyle='--')
+
+            # Optional ±3σ filter confidence bounds
+            if show_confidence:
+                axs[i].plot(innTime_array, 3*innSigmaLvlh_array[:, i], '-r', label='Innovation ±3σ confidence')
+                axs[i].plot(innTime_array, -3*innSigmaLvlh_array[:, i], '-r')
+
+            axs[i].grid(True)
+            axs[i].set_ylabel(f'{labels[i]}')
+        
+        axs[0].legend(loc='upper right')        
+        axs[-1].set_xlabel(xLabel)
+
+        # --- 4th row: Landmark ID vs time ---
+        axs[3].scatter(innTime_array, landmark_ids, marker='o', s=12, color='b')
+        axs[3].set_ylabel("ID")
+        axs[3].grid(True)
+        axs[3].set_xlabel(xLabel)
+
+        fig.suptitle(figureTitle)
+        plt.tight_layout()
+
+        # opt save
+        if self._EXPORT_FIGURES_FLAG:
+            fig_path = os.path.join(self._dataDir,'figures')
+            out_path = os.path.join(fig_path,f"{self._solutionName} {title.replace(' ', '_')}.png")
             plt.savefig(out_path, dpi=300, bbox_inches='tight')
             print(f"Saved: {out_path}")
 
 
     
-
-
+    
     @staticmethod
-    def ComputeResolvedToLVLH_DCM():
-        T_LR = None
-        return T_LR
+    def ComputeResolvedToLVLH_DCM(r_BM_M_truth,v_BM_M_truth,q_BM_truth):
+        ## Create LVLH frame and apply measurement noise in this frame
+        # make LVLH frame
+        rhat = r_BM_M_truth / np.linalg.norm(r_BM_M_truth)
+        h = np.cross(r_BM_M_truth, v_BM_M_truth)
+        zhat = h / np.linalg.norm(h)                   # orbital angular momentum dir
+        rhat = rhat - zhat * np.dot(rhat, zhat)
+        rhat /= np.linalg.norm(rhat)
+        yhat = np.cross(zhat, rhat)
+        yhat /= np.linalg.norm(yhat)
+        
+        # MCMF to LVLH
+        TLM = np.concatenate((rhat.reshape(-1,1),yhat.reshape(-1,1),zhat.reshape(-1,1)),axis=1).T
+        # MCMF to Body
+        TBM = q_BM_truth.to_dcm()
+        # Body to LVLH
+        TLB = (TLM@TBM.T)
+        T_body_to_lvlh_truth = TLB
+
+        return T_body_to_lvlh_truth
+
     
     @staticmethod
     def CreatePklFileDataDict(
