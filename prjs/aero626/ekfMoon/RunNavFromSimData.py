@@ -173,8 +173,8 @@ def RunNavFromSimData(runDataDir, saveDataBool = True):
 
 
     # covariance 
-    sigma_r = 100. # km
-    sigma_Mdrdt = 1.1 # km/s
+    sigma_r = 10. # km
+    sigma_Mdrdt = 1. # km/s
 
     ## Initial Pos Vel state obj ##
     posVelState0 = EkfPosVelState(nx=nx)
@@ -242,32 +242,7 @@ def RunNavFromSimData(runDataDir, saveDataBool = True):
     ## landmark measurement initialization ##
     radiusMoonkm = 1737.4 # km
     normAltKm = np.linalg.norm(r_BM_M0) - radiusMoonkm
-    # lvlh_oneSigmaArray =np.array((normAltKm/10,normAltKm/20,normAltKm/20))
-    # ## Create LVLH frame and apply measurement noise in this frame
-    # # make LVLH frame
-    # rhat = r_BM_M0 / np.linalg.norm(r_BM_M0)
-    # h = np.cross(r_BM_M0, Mdrdt_BM_M0)
-    # zhat = h / np.linalg.norm(h)                   # orbital angular momentum dir
-    # rhat = rhat - zhat * np.dot(rhat, zhat)
-    # rhat /= np.linalg.norm(rhat)
-    # yhat = np.cross(zhat, rhat)
-    # yhat /= np.linalg.norm(yhat)
-
-    # # MCMF to LVLH
-    # TLM = np.concatenate((rhat.reshape(-1,1),yhat.reshape(-1,1),zhat.reshape(-1,1)),axis=1).T
-    # # MCMF to Body
-    # TBM = q_BM_true_0.to_dcm()
-    # # Body to LVLH
-    # TLB = (TLM@TBM.T)
-    # T_body_to_lvlh_truth = TLB
-    # # measurement noise
-    # # add noise to each axis
-    # oneSigmaLVLH = lvlh_oneSigmaArray
-    # oneSigmaBody = TLB.T @ oneSigmaLVLH
-    # PvvBodyFrame = np.diag(oneSigmaBody**2)
-        
-    # EKF measurement noise
-    # ekf.Pvv = PvvBodyFrame
+    
     # load map 
     ekf.loadLandmarkMap(trueLandmarks) 
 
@@ -287,7 +262,7 @@ def RunNavFromSimData(runDataDir, saveDataBool = True):
     egmf = MoonEGMF()
     ## spread means accross 3 sigma with identical variance
     Lx = 9
-    sigmaSpread = 1.
+    sigmaSpread = 3.
     mx0 = copy.deepcopy(ekf.mx_full.mx)
     Pxx0 = copy.deepcopy(ekf.mx_full.Pxx)
     gmm = MoonGaussianMixtureModel(Lx_input=Lx)
