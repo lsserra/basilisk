@@ -111,8 +111,8 @@ def run(showPlots, savePkl, EarthAndMoonGrav):
     rLLO = moonBody.radEquator + 2000       # meters
     oe.a = rLLO
     oe.e = 0.00001
-    oe.i = 0.0 * macros.D2R
-    oe.Omega = 0.0 * macros.D2R
+    oe.i = 30.0 * macros.D2R
+    oe.Omega = 30.0 * macros.D2R
     oe.omega = 0.0 * macros.D2R
     oe.f = 0.0 * macros.D2R
     rN, vN = orbitalMotion.elem2rv(moonBody.mu, oe)
@@ -186,6 +186,18 @@ def run(showPlots, savePkl, EarthAndMoonGrav):
     # Set up messages for both IMU's
     imuDataRec = imu.sensorOutMsg.recorder(samplingTime)
     scSim.AddModelToTask(simTaskName, imuDataRec)
+
+    ## vizualization
+    fileName = os.path.basename(os.path.splitext(__file__)[0])
+    if vizSupport.vizFound:
+        viz = vizSupport.enableUnityVisualization(scSim, simTaskName, scObject,
+                                                   saveFile=fileName
+                                                  )
+        # viz.settings.mainCameraTarget = "bsk-Sat"
+        # viz.settings.showCelestialBodyLabels = 1
+        
+        # viz.settings.trueTrajectoryLinesOn = 4
+        # viz.settings.truePathRotatingFrame = "earth moon"
     
 
     # Initialize simulation
@@ -243,6 +255,8 @@ def run(showPlots, savePkl, EarthAndMoonGrav):
             "gryoAngVel": gryoAngVel,
             "timeGyro": gyroTime
         }
+        
+        
         if EarthAndMoonGrav:
             # Write to pickle file
             with open("data/MoonCentralBody_MoonEarthGrav.pkl", "wb") as f:
@@ -339,6 +353,9 @@ def run(showPlots, savePkl, EarthAndMoonGrav):
 
 
 if __name__ == "__main__":
+
+    datadir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")) 
+    datadir = os.path.join(datadir,'data')
     run(
         True,        # show_plots
         True,      # save pkl file
