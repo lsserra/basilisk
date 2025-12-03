@@ -43,8 +43,8 @@ def RunNavFromSimData(runDataDir, saveDataBool = True):
 
 
     # with open("data/MoonCentralBody_MoonGrav.pkl", "rb") as f:
-    # with open("data/MoonCentralBody_MoonEarthGrav.pkl", "rb") as f:
-    with open("data/MoonCentralBody_MoonGrav_TrueGyro_NoRate_IdentityAtt.pkl", "rb") as f:
+    with open("data/MoonCentralBody_MoonEarthGrav.pkl", "rb") as f:
+    # with open("data/MoonCentralBody_MoonGrav_TrueGyro_NoRate_IdentityAtt.pkl", "rb") as f:
         sim_data = pickle.load(f)
 
     timeData = sim_data["time"] * 1e-9 # to seconds
@@ -242,38 +242,38 @@ def RunNavFromSimData(runDataDir, saveDataBool = True):
     ## landmark measurement initialization ##
     radiusMoonkm = 1737.4 # km
     normAltKm = np.linalg.norm(r_BM_M0) - radiusMoonkm
-    lvlh_oneSigmaArray =np.array((normAltKm/10,normAltKm/20,normAltKm/20))
-    ## Create LVLH frame and apply measurement noise in this frame
-    # make LVLH frame
-    rhat = r_BM_M0 / np.linalg.norm(r_BM_M0)
-    h = np.cross(r_BM_M0, Mdrdt_BM_M0)
-    zhat = h / np.linalg.norm(h)                   # orbital angular momentum dir
-    rhat = rhat - zhat * np.dot(rhat, zhat)
-    rhat /= np.linalg.norm(rhat)
-    yhat = np.cross(zhat, rhat)
-    yhat /= np.linalg.norm(yhat)
+    # lvlh_oneSigmaArray =np.array((normAltKm/10,normAltKm/20,normAltKm/20))
+    # ## Create LVLH frame and apply measurement noise in this frame
+    # # make LVLH frame
+    # rhat = r_BM_M0 / np.linalg.norm(r_BM_M0)
+    # h = np.cross(r_BM_M0, Mdrdt_BM_M0)
+    # zhat = h / np.linalg.norm(h)                   # orbital angular momentum dir
+    # rhat = rhat - zhat * np.dot(rhat, zhat)
+    # rhat /= np.linalg.norm(rhat)
+    # yhat = np.cross(zhat, rhat)
+    # yhat /= np.linalg.norm(yhat)
 
-    # MCMF to LVLH
-    TLM = np.concatenate((rhat.reshape(-1,1),yhat.reshape(-1,1),zhat.reshape(-1,1)),axis=1).T
-    # MCMF to Body
-    TBM = q_BM_true_0.to_dcm()
-    # Body to LVLH
-    TLB = (TLM@TBM.T)
-    T_body_to_lvlh_truth = TLB
-    # measurement noise
-    # add noise to each axis
-    oneSigmaLVLH = lvlh_oneSigmaArray
-    oneSigmaBody = TLB.T @ oneSigmaLVLH
-    PvvBodyFrame = np.diag(oneSigmaBody**2)
+    # # MCMF to LVLH
+    # TLM = np.concatenate((rhat.reshape(-1,1),yhat.reshape(-1,1),zhat.reshape(-1,1)),axis=1).T
+    # # MCMF to Body
+    # TBM = q_BM_true_0.to_dcm()
+    # # Body to LVLH
+    # TLB = (TLM@TBM.T)
+    # T_body_to_lvlh_truth = TLB
+    # # measurement noise
+    # # add noise to each axis
+    # oneSigmaLVLH = lvlh_oneSigmaArray
+    # oneSigmaBody = TLB.T @ oneSigmaLVLH
+    # PvvBodyFrame = np.diag(oneSigmaBody**2)
         
     # EKF measurement noise
-    ekf.Pvv = PvvBodyFrame
+    # ekf.Pvv = PvvBodyFrame
     # load map 
     ekf.loadLandmarkMap(trueLandmarks) 
 
 
     # parameters for 'optical sensor suite'
-    relativeDistanceThresholdKm = normAltKm + 100 # km
+    # relativeDistanceThresholdKm = normAltKm + 100 # km
     # max number of landmark measurements
     MAX_NUM_LANDMARK_MEAS = 1
 
@@ -286,8 +286,8 @@ def RunNavFromSimData(runDataDir, saveDataBool = True):
     from prjs.aero626.egmf.MoonEGMF import MoonEGMF, MoonGaussianMixtureModel
     egmf = MoonEGMF()
     ## spread means accross 3 sigma with identical variance
-    Lx = 1
-    sigmaSpread = 0.
+    Lx = 9
+    sigmaSpread = 1.
     mx0 = copy.deepcopy(ekf.mx_full.mx)
     Pxx0 = copy.deepcopy(ekf.mx_full.Pxx)
     gmm = MoonGaussianMixtureModel(Lx_input=Lx)
@@ -295,6 +295,7 @@ def RunNavFromSimData(runDataDir, saveDataBool = True):
                         Pxx=Pxx0,
                         Lx=Lx,
                         spread_sigma=sigmaSpread)
+
     
     ## loop to create full state objs
     for i in range(len(ws)):
@@ -321,6 +322,23 @@ def RunNavFromSimData(runDataDir, saveDataBool = True):
         statei.mx[6:] = np.zeros_like((statei.mx[6:]))
 
         egmf.gaussianPdfList_.append(copy.deepcopy(statei))
+
+    
+   
+
+    ## analaze initial GMM 
+    gmm._gaussianPdfList = copy.deepcopy(egmf.gaussianPdfList_)
+    refGaussian0 = FullFilterState(nx=12)
+    refGaussian0.mx = mx0
+    refGaussian0.Pxx = Pxx0
+
+     ## change weights
+    gmm.pdf_based_weights(referenceGaussian=refGaussian0)
+    gmm._dataDir = runDataDir
+    gmm._EXPORT_FIGURES_FLAG = True
+    stateIdxAnalyze = [0,3,6,9]
+    for i,stateIdx in enumerate(stateIdxAnalyze):
+        gmm.visualizeGmm(stateIdxOfInterest=stateIdx, referenceGaussian=refGaussian0, numSigma=4, numPoints=800)
 
     ## initialize egmf
     egmf._ekf = EkfPoseEstimator()
@@ -426,6 +444,8 @@ def RunNavFromSimData(runDataDir, saveDataBool = True):
             # measurement noise = f(altitude)
             radiusMoonkm = 1737.4 # km
             normAltKm = np.linalg.norm(r_BM_M) - radiusMoonkm
+            relativeDistanceThresholdKm = normAltKm + 100 # km
+
             lvlh_oneSigmaArrayInput =np.array((normAltKm/10,normAltKm/20,normAltKm/20))
 
             visibleLandmarks, PvvBodyFrame, T_BodyToLvlh_truth = getLandmarkMeasurements(
