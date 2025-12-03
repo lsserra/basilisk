@@ -34,7 +34,7 @@ from prjs.aero626.constants import (
 )
 
 
-def RunNavFromSimData(runDataDir, saveDataBool = True):
+def RunNavFromSimData(runDataDir, saveDataBool = True, EKF_ONLY_FLAG = False):
     # initalize random seed 
     random_seed = 42
     # random_seed = None
@@ -61,8 +61,8 @@ def RunNavFromSimData(runDataDir, saveDataBool = True):
     # idxCap = 25
     # idxCap = 125
     # idxCap = 700
-    idxCap = 1500
-    # idxCap = None
+    # idxCap = 1500
+    idxCap = None
     if idxCap is not None:
         timeData = timeData[:idxCap]
         sc_pos = sc_pos[:idxCap,:]
@@ -255,91 +255,92 @@ def RunNavFromSimData(runDataDir, saveDataBool = True):
     # add some bias to gryo
     trueBias = np.deg2rad(np.array((0.1,0.1,0.1)))/3600 # deg/hr to rad/s
 
+    if not EKF_ONLY_FLAG:
+        ## EGMF Initialization ##
+        from prjs.aero626.egmf.MoonEGMF import MoonEGMF, MoonGaussianMixtureModel
+        egmf = MoonEGMF()
+        ## spread means accross 3 sigma with identical variance
+        Lx = 9
+        sigmaSpread = 3.
+        mx0 = copy.deepcopy(ekf.mx_full.mx)
+        Pxx0 = copy.deepcopy(ekf.mx_full.Pxx)
+        gmm = MoonGaussianMixtureModel(Lx_input=Lx)
+        ws,ms, _ = gmm.gaussian_to_gmm(mx=mx0,
+                            Pxx=Pxx0,
+                            Lx=Lx,
+                            spread_sigma=sigmaSpread)
 
+        
+        ## loop to create full state objs
+        for i in range(len(ws)):
+            statei = FullFilterState(nx=12)
+            statei.mx = ms[i]
+            statei.Pxx = Pxx0
+            statei.w = ws[i]
+            statei.t = 0.
 
-    ## EGMF Initialization ##
-    from prjs.aero626.egmf.MoonEGMF import MoonEGMF, MoonGaussianMixtureModel
-    egmf = MoonEGMF()
-    ## spread means accross 3 sigma with identical variance
-    Lx = 9
-    sigmaSpread = 3.
-    mx0 = copy.deepcopy(ekf.mx_full.mx)
-    Pxx0 = copy.deepcopy(ekf.mx_full.Pxx)
-    gmm = MoonGaussianMixtureModel(Lx_input=Lx)
-    ws,ms, _ = gmm.gaussian_to_gmm(mx=mx0,
-                        Pxx=Pxx0,
-                        Lx=Lx,
-                        spread_sigma=sigmaSpread)
+            ## trasfer initial attitude and gyro bias error to reference states
+            # attitude
+            statei.q_BMref = copy.deepcopy(ekf.mx_full.q_BMref)
+            attErrEulerVec = statei.mx[6:9].flatten()
+            phi = np.linalg.norm(attErrEulerVec)
+            if phi > 1e-16:
+                ehat = attErrEulerVec/phi
+                qbodyErrorEulerVector = Quaternion.from_axis_angle(axis=ehat.flatten(),angle=phi)
+                statei.q_BMref = statei.q_BMref * qbodyErrorEulerVector
+            # gyro bias
+            statei.gyroBiasRef = copy.deepcopy(ekf.mx_full.gyroBiasRef)
+            errorBias = statei.mx[9:].flatten()
+            statei.gyroBiasRef = (statei.gyroBiasRef.flatten() + errorBias).reshape(-1,1)
+            # set mekf error states to zero
+            statei.mx[6:] = np.zeros_like((statei.mx[6:]))
 
-    
-    ## loop to create full state objs
-    for i in range(len(ws)):
-        statei = FullFilterState(nx=12)
-        statei.mx = ms[i]
-        statei.Pxx = Pxx0
-        statei.w = ws[i]
-        statei.t = 0.
+            egmf.gaussianPdfList_.append(copy.deepcopy(statei))
 
-        ## trasfer initial attitude and gyro bias error to reference states
-        # attitude
-        statei.q_BMref = copy.deepcopy(ekf.mx_full.q_BMref)
-        attErrEulerVec = statei.mx[6:9].flatten()
-        phi = np.linalg.norm(attErrEulerVec)
-        if phi > 1e-16:
-            ehat = attErrEulerVec/phi
-            qbodyErrorEulerVector = Quaternion.from_axis_angle(axis=ehat.flatten(),angle=phi)
-            statei.q_BMref = statei.q_BMref * qbodyErrorEulerVector
-        # gyro bias
-        statei.gyroBiasRef = copy.deepcopy(ekf.mx_full.gyroBiasRef)
-        errorBias = statei.mx[9:].flatten()
-        statei.gyroBiasRef = (statei.gyroBiasRef.flatten() + errorBias).reshape(-1,1)
-        # set mekf error states to zero
-        statei.mx[6:] = np.zeros_like((statei.mx[6:]))
-
-        egmf.gaussianPdfList_.append(copy.deepcopy(statei))
-
-    
-   
-
-    ## analaze initial GMM 
-    gmm._gaussianPdfList = copy.deepcopy(egmf.gaussianPdfList_)
-    refGaussian0 = FullFilterState(nx=12)
-    refGaussian0.mx = mx0
-    refGaussian0.Pxx = Pxx0
-
-     ## change weights
-    gmm.pdf_based_weights(referenceGaussian=refGaussian0)
-    gmm._dataDir = runDataDir
-    gmm._EXPORT_FIGURES_FLAG = True
-    stateIdxAnalyze = [0,3,6,9]
-    for i,stateIdx in enumerate(stateIdxAnalyze):
-        gmm.visualizeGmm(stateIdxOfInterest=stateIdx, referenceGaussian=refGaussian0, numSigma=4, numPoints=800)
-
-    ## initialize egmf
-    egmf._ekf = EkfPoseEstimator()
-    egmf._ekf._GMF_FLAG = True
-    egmf._ekf.loadLandmarkMap(trueLandmarks) 
-
-    # additive process noise
-    Pwwkm1 = np.zeros_like((Pxx0))
-    Pwwkm1Trans = block_diag(.1*np.eye(3),.01*np.eye(3))
-    Pwwkm1 = block_diag(Pwwkm1Trans,Qmekf)
-    egmf.Pwwkm1 = Pwwkm1
-
-    # t=0, compute some GM stats
-    mean,cov = egmf.computeBestEstMeanAndCovAtEpoch()
-    gyroBiasEst,q_BM_est= egmf.computeBestEstQuaternionAndGryoBias()
-    GMstate = FullFilterState(nx=len(egmf._ekf.mx_full.mx))
-    GMstate.mx = mean
-    GMstate.Pxx = cov
-    GMstate.t = t0
-    GMstate.gyroBiasRef = gyroBiasEst
-    GMstate.q_BMref = q_BM_est
-    egmf.storeGmBestGuess_.append(copy.deepcopy(GMstate))
+        
     
 
+        ## analaze initial GMM 
+        gmm._gaussianPdfList = copy.deepcopy(egmf.gaussianPdfList_)
+        refGaussian0 = FullFilterState(nx=12)
+        refGaussian0.mx = mx0
+        refGaussian0.Pxx = Pxx0
+
+        ## change weights
+        gmm.pdf_based_weights(referenceGaussian=refGaussian0)
+        gmm._dataDir = runDataDir
+        gmm._EXPORT_FIGURES_FLAG = True
+        stateIdxAnalyze = [0,3,6,9]
+        for i,stateIdx in enumerate(stateIdxAnalyze):
+            gmm.visualizeGmm(stateIdxOfInterest=stateIdx, referenceGaussian=refGaussian0, numSigma=4, numPoints=800)
+
+        ## initialize egmf
+        egmf._ekf = EkfPoseEstimator()
+        egmf._ekf._GMF_FLAG = True
+        egmf._ekf.loadLandmarkMap(trueLandmarks) 
+
+        # additive process noise
+        Pwwkm1 = np.zeros_like((Pxx0))
+        Pwwkm1Trans = block_diag(.1*np.eye(3),.01*np.eye(3))
+        Pwwkm1 = block_diag(Pwwkm1Trans,Qmekf)
+        egmf.Pwwkm1 = Pwwkm1
+
+        # t=0, compute some GM stats
+        mean,cov = egmf.computeBestEstMeanAndCovAtEpoch()
+        gyroBiasEst,q_BM_est= egmf.computeBestEstQuaternionAndGryoBias()
+        GMstate = FullFilterState(nx=len(egmf._ekf.mx_full.mx))
+        GMstate.mx = mean
+        GMstate.Pxx = cov
+        GMstate.t = t0
+        GMstate.gyroBiasRef = gyroBiasEst
+        GMstate.q_BMref = q_BM_est
+        egmf.storeGmBestGuess_.append(copy.deepcopy(GMstate))
+        
 
 
+
+    N = len(timeData)
+    update_every = max(1, N // 50)   # ~50 updates total
 
     # main sim loop
     for i, tk in enumerate(timeData):
@@ -364,6 +365,11 @@ def RunNavFromSimData(runDataDir, saveDataBool = True):
             SimTimeStore.append(tk)
 
             continue
+        
+
+        ## periodically update terminal
+        if i % update_every == 0:
+            print(f"Progress: {i}/{N}  ({100*i/N:.1f}%)")
 
         tkm = timeData[i-1]
         SimTimeStore.append(tk)
@@ -407,7 +413,8 @@ def RunNavFromSimData(runDataDir, saveDataBool = True):
         w_BN_B += trueBias
         gyroBiasTruthList.append(trueBias)
         ekf.propagate(toTime=tk, w_BN_B_meas=w_BN_B)
-        egmf.PropagateMixtureEkf(toTime=tk, w_BN_B_meas=w_BN_B)
+        if not EKF_ONLY_FLAG:
+            egmf.PropagateMixtureEkf(toTime=tk, w_BN_B_meas=w_BN_B)
 
 
         ### EKF Measurement Update ###
@@ -443,11 +450,12 @@ def RunNavFromSimData(runDataDir, saveDataBool = True):
                     z_meas_matrix = visibleLandmarks, 
                     PvvBodyFrame=PvvBodyFrame,
                     measTime=tk)
-                egmf.LandmarkMeasUpdateEkf(
-                    z_meas_matrix = visibleLandmarks, 
-                    PvvBodyFrame=PvvBodyFrame,
-                    measTime=tk
-                    )
+                if not EKF_ONLY_FLAG:
+                    egmf.LandmarkMeasUpdateEkf(
+                        z_meas_matrix = visibleLandmarks, 
+                        PvvBodyFrame=PvvBodyFrame,
+                        measTime=tk
+                        )
                 didUpdate = True
                 stopTimeLimit = 1.0
                 runningPlots = False
@@ -558,33 +566,34 @@ def RunNavFromSimData(runDataDir, saveDataBool = True):
 
 
         ## EGMF
-        _poseAnalyzer = PoseAnalyzer()
-        _poseAnalyzer._pklName = "EGMF.pkl"
-        pklPath = os.path.join(run_dir, _poseAnalyzer._pklName)
-        dataDict = _poseAnalyzer.CreatePklFileDataDict(
-            input_truth_r = np.array(r_BM_M_TruthStoreList),
-            input_truth_v = np.array(Mdrdt_BM_M_M_TruthStoreList),
-            input_truth_q = np.array(q_BM_TruthStoreList),
-            input_truth_t = np.array(SimTimeStore),
+        if not EKF_ONLY_FLAG:
+            _poseAnalyzer = PoseAnalyzer()
+            _poseAnalyzer._pklName = "EGMF.pkl"
+            pklPath = os.path.join(run_dir, _poseAnalyzer._pklName)
+            dataDict = _poseAnalyzer.CreatePklFileDataDict(
+                input_truth_r = np.array(r_BM_M_TruthStoreList),
+                input_truth_v = np.array(Mdrdt_BM_M_M_TruthStoreList),
+                input_truth_q = np.array(q_BM_TruthStoreList),
+                input_truth_t = np.array(SimTimeStore),
 
-            input_est_r = np.array([s.mx[0:3].flatten() for s in egmf.storeGmBestGuess_]),
-            input_est_v = np.array([s.mx[3:6].flatten() for s in egmf.storeGmBestGuess_]),
-            input_est_q = np.array([s.q_BMref.as_array() for s in egmf.storeGmBestGuess_]),
-            input_est_Pxx = np.array([s.Pxx for s in egmf.storeGmBestGuess_]),
-            input_est_t = np.array([s.t for s in egmf.storeGmBestGuess_]),
+                input_est_r = np.array([s.mx[0:3].flatten() for s in egmf.storeGmBestGuess_]),
+                input_est_v = np.array([s.mx[3:6].flatten() for s in egmf.storeGmBestGuess_]),
+                input_est_q = np.array([s.q_BMref.as_array() for s in egmf.storeGmBestGuess_]),
+                input_est_Pxx = np.array([s.Pxx for s in egmf.storeGmBestGuess_]),
+                input_est_t = np.array([s.t for s in egmf.storeGmBestGuess_]),
 
-            input_ref_frame = "MCMF",
-            input_tgt_frame = "Body",
-            input_resolved_frame = "MCMF"
-        )
-        ## lets append the gryo bias data dict to the pose one
-        gryoBiasDict= {
-            'truth_gyroBias': np.array(gyroBiasTruthList),
-            'est_gyroBias': np.array([s.gyroBiasRef.flatten() for s in egmf.storeGmBestGuess_])
-        }
-        dataDict = dataDict | gryoBiasDict
-        with open(pklPath, "wb") as f:
-            pickle.dump(dataDict, f)
+                input_ref_frame = "MCMF",
+                input_tgt_frame = "Body",
+                input_resolved_frame = "MCMF"
+            )
+            ## lets append the gryo bias data dict to the pose one
+            gryoBiasDict= {
+                'truth_gyroBias': np.array(gyroBiasTruthList),
+                'est_gyroBias': np.array([s.gyroBiasRef.flatten() for s in egmf.storeGmBestGuess_])
+            }
+            dataDict = dataDict | gryoBiasDict
+            with open(pklPath, "wb") as f:
+                pickle.dump(dataDict, f)
     
 
 
@@ -620,6 +629,8 @@ if __name__ == "__main__":
     ## config
     saveDataBool = True
     showPlotsBool = True
+
+    ekfOnlyFlag = True
     
 
 
@@ -643,7 +654,8 @@ if __name__ == "__main__":
     # run main simulation function
     RunNavFromSimData(
         runDataDir= run_dir,
-        saveDataBool=saveDataBool
+        saveDataBool=saveDataBool,
+        EKF_ONLY_FLAG=ekfOnlyFlag
     )
     
 
