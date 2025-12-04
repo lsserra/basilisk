@@ -7,7 +7,9 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.
 PATH2SIMDATADIR = "/Users/lukeserrano/repos/personal/basilisk/prjs/aero626/data"
 
 
-runNum = 8
+runNum = 32
+SAVE_FIGURES = True
+
 pth2data = os.path.join(PATH2SIMDATADIR, f"sim-{runNum:04d}")
 
 
@@ -28,7 +30,7 @@ if os.path.exists(pklPath):
     egmf_est_gyroBias = data.get('est_gyroBias', None)
 
     egmfPA._solutionName = "EGMF"
-    egmfPA._EXPORT_FIGURES_FLAG = True
+    egmfPA._EXPORT_FIGURES_FLAG = SAVE_FIGURES
     egmfPA._dataDir = pth2data
     egmfPA.LoadFromPklFile(pkl_path=pklPath)
     egmfPA.plotTransError3sigma()
@@ -54,6 +56,16 @@ if os.path.exists(pklPath):
     )
 
 
+# # compute EGMF stats
+# errors = egmfPA.compute_errors()
+# print("EGMF Statistics:")
+# print("Position RMSE:", errors["position"]["RMSE"], errors["position"]["units"])
+# print("Position MAE:", errors["position"]["MAE"], errors["position"]["units"])
+# print("Velocity RMSE:", errors["velocity"]["RMSE"], errors["velocity"]["units"])
+# print("Velocity MAE:", errors["velocity"]["MAE"], errors["velocity"]["units"])
+# print("Attitude RMSE:", errors["attitude"]["RMSE"], errors["attitude"]["units"])
+
+
 ## EKF
 ekfPA = PoseAnalyzer()
 pklPath = os.path.join(pth2data,"EKF.pkl")
@@ -68,7 +80,7 @@ if os.path.exists(pklPath):
 
     ekfPA._solutionName = "EKF"
     # ekfPA._NO_TITLE_FLAG = True
-    ekfPA._EXPORT_FIGURES_FLAG = True
+    ekfPA._EXPORT_FIGURES_FLAG = SAVE_FIGURES
     ekfPA._dataDir = pth2data
     ekfPA.LoadFromPklFile(pkl_path=pklPath)
     ekfPA.plotTransError3sigma()
@@ -123,7 +135,13 @@ if os.path.exists(pklPath):
         _PLOT_BODY = False
         )
 
-
+# compute EGMF stats
+# errors = ekfPA.compute_errors()
+# print("EKF Statistics:")
+# print("Position RMSE:", errors["position"]["RMSE"], errors["position"]["units"])
+# print("Position MAE:", errors["position"]["MAE"], errors["position"]["units"])
+# print("Velocity RMSE:", errors["velocity"]["RMSE"], errors["velocity"]["units"])
+# print("Velocity MAE:", errors["velocity"]["MAE"], errors["velocity"]["units"])
 
 
 plt.show()

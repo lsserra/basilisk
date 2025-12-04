@@ -41,13 +41,19 @@ def RunNavFromSimData(runDataDir, saveDataBool = True, EKF_ONLY_FLAG = False):
     rng = np.random.default_rng(random_seed)
 
 
-
+    SIM_PKL_FILE_STR = "data/MoonCentralBody_MoonEarthGrav_TenthPeriod.pkl"
     # with open("data/MoonCentralBody_MoonGrav.pkl", "rb") as f:
     # with open("data/MoonCentralBody_MoonEarthGrav.pkl", "rb") as f:
     
     # with open("data/MoonCentralBody_MoonGrav_TrueGyro_NoRate_IdentityAtt.pkl", "rb") as f:
-    with open("data/MoonCentralBody_MoonEarthGrav_TenthPeriod.pkl", "rb") as f:
+    
+    with open(SIM_PKL_FILE_STR, "rb") as f:
         sim_data = pickle.load(f)
+
+    # write to the sim config file which sim pkl file was used
+    sim_config_path = os.path.join(runDataDir,"simulation_config.txt")
+    with open(sim_config_path, "w") as f:
+        f.write(f"Basilisk Pkl File: {SIM_PKL_FILE_STR}\n\n")
 
     timeData = sim_data["time"] * 1e-9 # to seconds
     sc_pos   = sim_data["sc_pos"] / 1000 # to km
@@ -61,9 +67,9 @@ def RunNavFromSimData(runDataDir, saveDataBool = True, EKF_ONLY_FLAG = False):
 
     ## limit sim time for testing ##
     # idxCap = 25
-    # idxCap = 125
+    idxCap = 125
     # idxCap = 700
-    idxCap = 1500
+    # idxCap = 1500
     # idxCap = None
     if idxCap is not None:
         timeData = timeData[:idxCap]
@@ -163,8 +169,8 @@ def RunNavFromSimData(runDataDir, saveDataBool = True, EKF_ONLY_FLAG = False):
     # ekf object
     ekf = EkfPoseEstimator()
     # Process Noise
-    psd_r = .1 # 
-    psd_Mdrdt = .01 # 
+    psd_r = .0001 # 
+    psd_Mdrdt = .001 # 
     Qww_posVel = np.diag([psd_r,psd_r,psd_r,psd_Mdrdt,psd_Mdrdt,psd_Mdrdt])
 
 
@@ -175,8 +181,8 @@ def RunNavFromSimData(runDataDir, saveDataBool = True, EKF_ONLY_FLAG = False):
 
 
     # covariance 
-    sigma_r = 10. # km
-    sigma_Mdrdt = 1. # km/s
+    sigma_r = 1. # km
+    sigma_Mdrdt = .1 # km/s
 
     ## Initial Pos Vel state obj ##
     posVelState0 = EkfPosVelState(nx=nx)
@@ -252,7 +258,7 @@ def RunNavFromSimData(runDataDir, saveDataBool = True, EKF_ONLY_FLAG = False):
     # parameters for 'optical sensor suite'
     # relativeDistanceThresholdKm = normAltKm + 100 # km
     # max number of landmark measurements
-    MAX_NUM_LANDMARK_MEAS = 1
+    MAX_NUM_LANDMARK_MEAS = 3
 
     # add some bias to gryo
     trueBias = np.deg2rad(np.array((0.1,0.1,0.1)))/3600 # deg/hr to rad/s
@@ -323,7 +329,7 @@ def RunNavFromSimData(runDataDir, saveDataBool = True, EKF_ONLY_FLAG = False):
 
         # additive process noise
         Pwwkm1 = np.zeros_like((Pxx0))
-        Pwwkm1Trans = block_diag(.1*np.eye(3),.01*np.eye(3))
+        Pwwkm1Trans = block_diag(1e-6*np.eye(3),1e-3*np.eye(3))
         Pwwkm1 = block_diag(Pwwkm1Trans,Qmekf)
         egmf.Pwwkm1 = Pwwkm1
 
@@ -632,7 +638,7 @@ if __name__ == "__main__":
     saveDataBool = True
     showPlotsBool = True
 
-    ekfOnlyFlag = True
+    ekfOnlyFlag = False
     
 
 

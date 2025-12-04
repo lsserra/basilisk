@@ -493,6 +493,11 @@ class EkfPoseEstimator():
 
             # compute mean of measurement model
             mzk = q_BM_ref.rotate(map_r_LM_M - mr_BM_M_tk)
+            if mzkStack is None:
+                mzkStack = mzk.reshape(-1,1)
+            else:
+                mzkStack = np.vstack((mzkStack.reshape(-1,1), mzk.reshape(-1,1)))
+
             innovation = (landmarkMeas[i,:].flatten() - mzk).reshape((3,1))
             # log innovation
             innObj = innObjList[i]
@@ -549,7 +554,7 @@ class EkfPoseEstimator():
         if self._GMF_FLAG:
             self.mx_full.k = gaussian_pdf(
                 x=landmarkMeas.flatten(),
-                mean=mzk,
+                mean=mzkStack,
                 cov=Pzzk)
 
         # store innovation covariance
@@ -558,7 +563,8 @@ class EkfPoseEstimator():
             start = i * block_size
             stop = start + block_size
             innObj.innovationCov = Pzzk[start:stop, start:stop]
-            self.innovation_log.append(copy.deepcopy(innObj))
+            if not self._GMF_FLAG:
+                self.innovation_log.append(copy.deepcopy(innObj))
 
         # create full state 
         if self._GMF_FLAG:

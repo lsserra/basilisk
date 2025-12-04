@@ -383,8 +383,9 @@ class PoseAnalyzer():
 
             # Optional measurement noise bounds
             if show_measurement_noise:
-                axs[i].plot(innTime_array ,3 * lvlh_oneSigmaArrayInput[:, i], color='gray', linestyle='--', label='Measurement Noise ±3σ')
-                axs[i].plot(innTime_array ,-3 * lvlh_oneSigmaArrayInput[:, i], color='gray', linestyle='--')
+                measNoise_times = np.unique(innTime_array)
+                axs[i].plot(measNoise_times ,3 * lvlh_oneSigmaArrayInput[:, i], color='gray', linestyle='--', label='Measurement Noise ±3σ')
+                axs[i].plot(measNoise_times ,-3 * lvlh_oneSigmaArrayInput[:, i], color='gray', linestyle='--')
 
             # Optional ±3σ filter confidence bounds
             if show_confidence:
@@ -413,6 +414,63 @@ class PoseAnalyzer():
             plt.savefig(out_path, dpi=300, bbox_inches='tight')
             print(f"Saved: {out_path}")
 
+
+
+    def _extract_posterior(self, est_data):
+        """
+        Extract the posterior (last of 3 solutions per epoch).
+        Expects est_data with shape (N, 3, dim).
+        Returns array of shape (N, dim).
+        """
+        if est_data is None:
+            return None
+
+        # Always pick the last solution (index 2)
+        if est_data.ndim == 3 and est_data.shape[1] == 3:
+            return est_data[:, 2, :]  
+        else:
+            raise ValueError("Estimator data must have shape (N,3,dim).")
+
+    def compute_errors(self):
+        """Compute RMSE and MAE for r, v, q using only posterior states."""
+        if self._truth_t is None or self._est_t is None:
+            raise RuntimeError("Truth and estimate time arrays must be assigned.")
+
+        # Extract posterior states
+        r_post = self._extract_posterior(self._est_r)
+        v_post = self._extract_posterior(self._est_v)
+        q_post = self._extract_posterior(self._est_q)
+
+        # Interpolate onto truth time grid
+        r_est = self._interp_to_truth_time(r_post)
+        v_est = self._interp_to_truth_time(v_post)
+
+        # Quaternion: nearest-neighbor time matching
+        idx = np.searchsorted(self._est_t, self._truth_t) - 1
+        q_est = q_post[idx]
+
+        # Compute errors
+        r_err_norm = np.linalg.norm(self._truth_r - r_est, axis=1)
+        v_err_norm = np.linalg.norm(self._truth_v - v_est, axis=1)
+        q_err_deg = self._quat_angle_error(self._truth_q, q_est)
+
+        return {
+            "position": {
+                "RMSE": self._rmse(r_err_norm),
+                "MAE": self._mae(r_err_norm),
+                "units": self._units_r
+            },
+            "velocity": {
+                "RMSE": self._rmse(v_err_norm),
+                "MAE": self._mae(v_err_norm),
+                "units": self._units_v
+            },
+            "attitude": {
+                "RMSE": self._rmse(q_err_deg),
+                "MAE": self._mae(q_err_deg),
+                "units": self._units_att
+            }
+        }
 
     
     
