@@ -7,6 +7,15 @@ from datetime import datetime, timedelta
 from Basilisk.simulation import imuSensor
 from Basilisk.utilities import RigidBodyKinematics as rbk
 
+# import message declarations
+from Basilisk.architecture import messaging
+from Basilisk.fswAlgorithms import attTrackingError
+from Basilisk.fswAlgorithms import inertial3D
+# import FSW Algorithm related support
+from Basilisk.fswAlgorithms import mrpFeedback
+from Basilisk.simulation import extForceTorque
+from Basilisk.simulation import simpleNav
+
 from Basilisk.utilities.pyswice_spk_utilities import spkRead
 
 
@@ -128,6 +137,15 @@ def run(showPlots, savePkl, EarthAndMoonGrav):
     pyswice.furnsh_c(spiceObject.SPICEDataPath + 'pck00010.tpc')  # generic Planetary Constants Kernel
 
 
+    # define the simulation inertia
+    # I = [900., 0., 0.,
+    #      0., 800., 0.,
+    #      0., 0., 600.]
+    # scObject.hub.mHub = 750.0  # kg - spacecraft mass
+    I = [1., 0., 0.,
+         0., 1., 0.,
+         0., 0., 1.]
+    
     scObject.hub.r_CN_NInit = rN
     scObject.hub.v_CN_NInit = vN
 
@@ -140,7 +158,7 @@ def run(showPlots, savePkl, EarthAndMoonGrav):
     # set the simulation time
     n = np.sqrt(moonBody.mu / oe.a / oe.a / oe.a)
     P = 2. * np.pi / n
-    simulationTime = macros.sec2nano(.1*P)
+    simulationTime = macros.sec2nano(1.*P)
     # Setup data logging
     numDataPoints = np.round(simulationTime/simulationTimeStep)
     samplingTime = unitTestSupport.samplingTime(simulationTime, simulationTimeStep, numDataPoints)
@@ -181,23 +199,92 @@ def run(showPlots, savePkl, EarthAndMoonGrav):
         EarthDataRec = spiceObject.planetStateOutMsgs[1].recorder(samplingTime)
         scSim.AddModelToTask(simTaskName, EarthDataRec)
 
-    scSim.AddModelToTask(simTaskName, scDataRec)
-    scSim.AddModelToTask(simTaskName, MoonDataRec)
+    scSim.AddModelToTask(simTaskName, scDataRec,ModelPriority=5)
+    scSim.AddModelToTask(simTaskName, MoonDataRec,ModelPriority=4)
     # Set up messages for both IMU's
     imuDataRec = imu.sensorOutMsg.recorder(samplingTime)
     scSim.AddModelToTask(simTaskName, imuDataRec)
+    
+#######################
+# CONTROLLER SETUP
+#######################
+   # setup extForceTorque module
+    # the control torque is read in through the messaging system
+    extFTObject = extForceTorque.ExtForceTorque()
+    extFTObject.ModelTag = "externalDisturbance"
+    scObject.addDynamicEffector(extFTObject)
+    scSim.AddModelToTask(simTaskName, extFTObject)
 
-    ## vizualization
-    fileName = os.path.basename(os.path.splitext(__file__)[0])
-    if vizSupport.vizFound:
-        viz = vizSupport.enableUnityVisualization(scSim, simTaskName, scObject,
-                                                   saveFile=fileName
-                                                  )
-        # viz.settings.mainCameraTarget = "bsk-Sat"
-        # viz.settings.showCelestialBodyLabels = 1
-        
-        # viz.settings.trueTrajectoryLinesOn = 4
-        # viz.settings.truePathRotatingFrame = "earth moon"
+    # add the simple Navigation sensor module.  This sets the SC attitude, rate, position
+    # velocity navigation message
+    sNavObject = simpleNav.SimpleNav()
+    sNavObject.ModelTag = "SimpleNavigation"
+    scSim.AddModelToTask(simTaskName, sNavObject)
+
+    #
+    #   setup the FSW algorithm tasks
+    #
+
+    # setup inertial3D guidance module
+    inertial3DObj = inertial3D.inertial3D()
+    inertial3DObj.ModelTag = "inertial3D"
+    scSim.AddModelToTask(simTaskName, inertial3DObj)
+    inertial3DObj.sigma_R0N = [0., 0., 0.]  # set the desired inertial orientation
+
+    # setup the attitude tracking error evaluation module
+    attError = attTrackingError.attTrackingError()
+    attError.ModelTag = "attErrorInertial3D"
+    scSim.AddModelToTask(simTaskName, attError)
+
+    # setup the MRP Feedback control module
+    mrpControl = mrpFeedback.mrpFeedback()
+    mrpControl.ModelTag = "mrpFeedback"
+    scSim.AddModelToTask(simTaskName, mrpControl)
+    mrpControl.K = 3.5
+    mrpControl.Ki = -1  # make value negative to turn off integral feedback
+    mrpControl.P = 30.0
+
+    mrpControl.K = 0.1         # Reduced Gain for stability testing
+    mrpControl.Ki = 0.1        # Set to 0.0 to turn off integral feedback
+    mrpControl.P = 0.1    
+    # mrpControl.integralLimit = 2. / mrpControl.Ki * 0.1
+
+    #
+    #   Setup data logging before the simulation is initialized
+    #
+    # numDataPoints = 50
+    # samplingTime = unitTestSupport.samplingTime(simulationTime, simulationTimeStep, numDataPoints)
+    attErrorLog = attError.attGuidOutMsg.recorder(samplingTime)
+    mrpLog = mrpControl.cmdTorqueOutMsg.recorder(samplingTime)
+    scSim.AddModelToTask(simTaskName, attErrorLog)
+    scSim.AddModelToTask(simTaskName, mrpLog)
+
+    #
+    # create simulation messages
+    #
+
+    # create the FSW vehicle configuration message
+    # use the same inertia in the FSW algorithm as in the simulation
+    vehicleConfigOut = messaging.VehicleConfigMsgPayload(ISCPntB_B=I)
+    configDataMsg = messaging.VehicleConfigMsg().write(vehicleConfigOut)
+
+    #
+    # connect the messages to the modules
+    #
+    sNavObject.scStateInMsg.subscribeTo(scObject.scStateOutMsg)
+    attError.attNavInMsg.subscribeTo(sNavObject.attOutMsg)
+    attError.attRefInMsg.subscribeTo(inertial3DObj.attRefOutMsg)
+    mrpControl.guidInMsg.subscribeTo(attError.attGuidOutMsg)
+    extFTObject.cmdTorqueInMsg.subscribeTo(mrpControl.cmdTorqueOutMsg)
+    mrpControl.vehConfigInMsg.subscribeTo(configDataMsg)
+
+    # if this scenario is to interface with the BSK Viz, uncomment the following lines
+    viz = vizSupport.enableUnityVisualization(scSim, simTaskName, scObject
+                                         , saveFile=fileName
+                                        )
+    viz.settings.showVelocityFrame = 1
+    viz.settings.spacecraftCSon = 1
+    viz.settings.planetCSon = 1
     
 
     # Initialize simulation
@@ -207,16 +294,17 @@ def run(showPlots, savePkl, EarthAndMoonGrav):
     scSim.ConfigureStopTime(simulationTime)
     scSim.ExecuteSimulation()
 
+    # toss away first data point
     # Retrieve logged data
-    posData = scDataRec.r_BN_N
-    velData = scDataRec.v_BN_N
-    mrpBN = scDataRec.sigma_BN
-    timeData = scDataRec.times()
-    moonPos = MoonDataRec.PositionVector
-    moonVel = MoonDataRec.VelocityVector
+    posData = scDataRec.r_BN_N[1:,:]
+    velData = scDataRec.v_BN_N[1:,:]
+    mrpBN = scDataRec.sigma_BN[1:,:]
+    timeData = scDataRec.times()[1:]
+    moonPos = MoonDataRec.PositionVector[1:,:]
+    moonVel = MoonDataRec.VelocityVector[1:,:]
 
-    gryoAngVel = imuDataRec.AngVelPlatform
-    gyroTime = imuDataRec.times()
+    gryoAngVel = imuDataRec.AngVelPlatform[1:,:]
+    gyroTime = imuDataRec.times()[1:]
 
     earthPos = None
     earthVel = None
@@ -337,6 +425,47 @@ def run(showPlots, savePkl, EarthAndMoonGrav):
     plt.title('IMU Gyro Measurements')
     plt.legend()
     plt.grid(True)
+
+
+      #
+    #   retrieve the logged data
+    #
+    dataLr = mrpLog.torqueRequestBody
+    dataSigmaBR = attErrorLog.sigma_BR
+    dataOmegaBR = attErrorLog.omega_BR_B
+    timeAxis = attErrorLog.times()
+
+    plt.figure(5)
+    for idx in range(3):
+        plt.plot(timeAxis * macros.NANO2MIN, dataSigmaBR[:, idx],
+                 color=unitTestSupport.getLineColor(idx, 3),
+                 label=r'$\sigma_' + str(idx) + '$')
+    plt.legend(loc='lower right')
+    plt.xlabel('Time [min]')
+    plt.ylabel(r'Attitude Error $\sigma_{B/R}$')
+    figureList = {}
+    pltName = fileName + "1" 
+    figureList[pltName] = plt.figure(5)
+
+    plt.figure(6)
+    for idx in range(3):
+        plt.plot(timeAxis * macros.NANO2MIN, dataLr[:, idx],
+                 color=unitTestSupport.getLineColor(idx, 3),
+                 label='$L_{r,' + str(idx) + '}$')
+    plt.legend(loc='lower right')
+    plt.xlabel('Time [min]')
+    plt.ylabel('Control Torque $L_r$ [Nm]')
+    pltName = fileName + "2"
+    figureList[pltName] = plt.figure(6)
+
+    plt.figure(7)
+    for idx in range(3):
+        plt.plot(timeAxis * macros.NANO2MIN, dataOmegaBR[:, idx],
+                 color=unitTestSupport.getLineColor(idx, 3),
+                 label=r'$\omega_{BR,' + str(idx) + '}$')
+    plt.legend(loc='lower right')
+    plt.xlabel('Time [min]')
+    plt.ylabel('Rate Tracking Error [rad/s] ')
 
 
     if showPlots:

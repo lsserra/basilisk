@@ -595,11 +595,11 @@ def run(show_plots, useJitterSimple, useRWVoltageIO):
     scObject.hub.r_CN_NInit = rN  # m   - r_CN_N
     scObject.hub.v_CN_NInit = vN  # m/s - v_CN_N
     scObject.hub.sigma_BNInit = [[0.1], [0.2], [-0.3]]  # sigma_CN_B
-    scObject.hub.omega_BN_BInit = [[0.001], [-0.01], [0.03]]  # rad/s - omega_CN_B
+    scObject.hub.omega_BN_BInit = [[0.1], [-0.01], [0.03]]  # rad/s - omega_CN_B
 
     # if this scenario is to interface with the BSK Viz, uncomment the following lines
     viz = vizSupport.enableUnityVisualization(scSim, simTaskName, scObject
-                                              # , saveFile=fileName
+                                               , saveFile=fileName
                                               , rwEffectorList=rwStateEffector
                                               )
     # link messages
@@ -689,5 +689,5 @@ if __name__ == "__main__":
     run(
         True,  # show_plots
         False,  # useJitterSimple
-        True  # useRWVoltageIO
+        False  # useRWVoltageIO
     )

@@ -234,10 +234,12 @@ def run(show_plots, useLargeTumble):
     mrpControl.vehConfigInMsg.subscribeTo(configDataMsg)
 
     # if this scenario is to interface with the BSK Viz, uncomment the following lines
-    vizSupport.enableUnityVisualization(scSim, simTaskName, scObject
-                                        # , saveFile=fileName
+    viz = vizSupport.enableUnityVisualization(scSim, simTaskName, scObject
+                                         , saveFile=fileName
                                         )
-
+    viz.settings.showVelocityFrame = 1
+    
+    
     #
     #   initialize Simulation
     #
@@ -311,5 +313,5 @@ def run(show_plots, useLargeTumble):
 if __name__ == "__main__":
     run(
         True,  # show_plots
-        False,  # useLargeTumble
+        True,  # useLargeTumble
     )

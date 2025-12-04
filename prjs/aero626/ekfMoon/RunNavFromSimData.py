@@ -41,12 +41,14 @@ def RunNavFromSimData(runDataDir, saveDataBool = True, EKF_ONLY_FLAG = False):
     rng = np.random.default_rng(random_seed)
 
 
-    SIM_PKL_FILE_STR = "data/MoonCentralBody_MoonEarthGrav_TenthPeriod.pkl"
-    # with open("data/MoonCentralBody_MoonGrav.pkl", "rb") as f:
-    # with open("data/MoonCentralBody_MoonEarthGrav.pkl", "rb") as f:
-    
-    # with open("data/MoonCentralBody_MoonGrav_TrueGyro_NoRate_IdentityAtt.pkl", "rb") as f:
-    
+    # SIM_PKL_FILE_STR = "data/MoonCentralBody_MoonEarthGrav_TenthPeriod.pkl"
+    # SIM_PKL_FILE_STR = "data/MoonCentralBody_MoonEarthGrav_OnePeriod.pkl"
+    # SIM_PKL_FILE_STR = "data/MoonCentralBody_MoonEarthGrav.pkl"
+
+
+    # SIM_PKL_FILE_STR = "data/MoonCentralBody_MoonEarthGrav_OnePeriod_LowTipOff_NoController.pkl"
+    SIM_PKL_FILE_STR = "data/MoonCentralBody_MoonEarthGrav_HighTipOff_With_Controller.pkl"
+
     with open(SIM_PKL_FILE_STR, "rb") as f:
         sim_data = pickle.load(f)
 
@@ -67,9 +69,10 @@ def RunNavFromSimData(runDataDir, saveDataBool = True, EKF_ONLY_FLAG = False):
 
     ## limit sim time for testing ##
     # idxCap = 25
-    idxCap = 125
+    # idxCap = 125
     # idxCap = 700
-    # idxCap = 1500
+    idxCap = 1500
+    # idxCap = 4000
     # idxCap = None
     if idxCap is not None:
         timeData = timeData[:idxCap]
