@@ -95,7 +95,7 @@ def RunNavFromSimData(runDataDir, saveDataBool = True, EKF_ONLY_FLAG = False):
     timeData = timeData - t0
     # reset t0
     t0 = timeData[0]
-    
+
     ## set measurement update at _ Hz ##
     measFreq = 1.0 # Hz
     simdt = timeData[1] - timeData[0]
@@ -319,12 +319,16 @@ def RunNavFromSimData(runDataDir, saveDataBool = True, EKF_ONLY_FLAG = False):
 
         ## analaze initial GMM 
         gmm._gaussianPdfList = copy.deepcopy(egmf.gaussianPdfList_)
+        ## change weights
         refGaussian0 = FullFilterState(nx=12)
         refGaussian0.mx = mx0
         refGaussian0.Pxx = Pxx0
-
-        ## change weights
         gmm.pdf_based_weights(referenceGaussian=refGaussian0)
+        egmf.gaussianPdfList_ = copy.deepcopy(gmm._gaussianPdfList)
+
+        
+
+        
         gmm._dataDir = runDataDir
         gmm._EXPORT_FIGURES_FLAG = True
         stateIdxAnalyze = [0,3,6,9]
