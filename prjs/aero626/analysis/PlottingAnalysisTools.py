@@ -179,6 +179,26 @@ def plot_landmark_innovations_lvlh(
     plt.tight_layout()
 
 
+def computeBodyToLvlhDCM(r_BM_M_truth,v_BM_M_truth,q_BM_truth):
+    ## Create LVLH frame and apply measurement noise in this frame
+    # make LVLH frame
+    rhat = r_BM_M_truth / np.linalg.norm(r_BM_M_truth)
+    h = np.cross(r_BM_M_truth, v_BM_M_truth)
+    zhat = h / np.linalg.norm(h)                   # orbital angular momentum dir
+    rhat = rhat - zhat * np.dot(rhat, zhat)
+    rhat /= np.linalg.norm(rhat)
+    yhat = np.cross(zhat, rhat)
+    yhat /= np.linalg.norm(yhat)
+    
+    # MCMF to LVLH
+    TLM = np.concatenate((rhat.reshape(-1,1),yhat.reshape(-1,1),zhat.reshape(-1,1)),axis=1).T
+    # MCMF to Body
+    TBM = q_BM_truth.to_dcm()
+    # Body to LVLH
+    TLB = (TLM@TBM.T)
+    T_body_to_lvlh_truth = TLB
+
+    return T_body_to_lvlh_truth
 
 
 def plotPosVelStateErrorAnd3sigma(r_TruthList,

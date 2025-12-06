@@ -56,14 +56,8 @@ if os.path.exists(pklPath):
     )
 
 
-# # compute EGMF stats
-# errors = egmfPA.compute_errors()
-# print("EGMF Statistics:")
-# print("Position RMSE:", errors["position"]["RMSE"], errors["position"]["units"])
-# print("Position MAE:", errors["position"]["MAE"], errors["position"]["units"])
-# print("Velocity RMSE:", errors["velocity"]["RMSE"], errors["velocity"]["units"])
-# print("Velocity MAE:", errors["velocity"]["MAE"], errors["velocity"]["units"])
-# print("Attitude RMSE:", errors["attitude"]["RMSE"], errors["attitude"]["units"])
+
+
 
 
 ## EKF
@@ -135,14 +129,63 @@ if os.path.exists(pklPath):
         _PLOT_BODY = False
         )
 
+
+
+
+
+
+
+
+
+
+
+
+def writeGyroBiasStats(true_gryoBiasArray,est_gyroBiasArray,filePath,unitsString):
+        # -----------------------
+        #  Gyro Bias Errors
+        # -----------------------
+        e_r = true_gryoBiasArray - est_gyroBiasArray        # (N,3)
+        rmse_r = np.sqrt(np.mean(np.sum(e_r**2, axis=1)))
+        mae_r = np.mean(np.linalg.norm(e_r, axis=1))
+        with open(filePath, "a") as f:
+            f.write(f"Gyro Bias Error ({unitsString}):\n")
+            f.write(f"   RMSE = {rmse_r:.6f}\n")
+            f.write(f"   MAE  = {mae_r:.6f} \n\n")
+
+
+## compute stats
 # compute EGMF stats
-# errors = ekfPA.compute_errors()
-# print("EKF Statistics:")
-# print("Position RMSE:", errors["position"]["RMSE"], errors["position"]["units"])
-# print("Position MAE:", errors["position"]["MAE"], errors["position"]["units"])
-# print("Velocity RMSE:", errors["velocity"]["RMSE"], errors["velocity"]["units"])
-# print("Velocity MAE:", errors["velocity"]["MAE"], errors["velocity"]["units"])
+egmfPA.extract_posterior(posteriori_time_array=inn_t)
+_ = egmfPA.compute_errors()
+egmfPA.write_stats_to_file()
+
+# gryo stats
+statsFile = os.path.join(egmfPA._dataDir,f"{egmfPA._solutionName}_stats.txt")
+est_ = egmf_est_gyroBias[egmfPA._logical_post_est,:]
+truth_ = truth_gyroBias[egmfPA._logical_post_truth,:]
+writeGyroBiasStats(true_gryoBiasArray=truth_,
+                   est_gyroBiasArray = est_,
+                   filePath = statsFile,
+                   unitsString = 'deg/hr')
+
+# compute EKF stats
+ekfPA.extract_posterior(posteriori_time_array=inn_t)
+_ = ekfPA.compute_errors()
+ekfPA.write_stats_to_file()
+
+
+# gryo stats
+statsFile = os.path.join(ekfPA._dataDir,f"{ekfPA._solutionName}_stats.txt")
+est_ = ekf_est_gyroBias[ekfPA._logical_post_est,:]
+truth_ = truth_gyroBias[ekfPA._logical_post_truth,:]
+writeGyroBiasStats(true_gryoBiasArray=truth_,
+                   est_gyroBiasArray = est_,
+                   filePath = statsFile,
+                   unitsString = 'deg/hr')
+
+
 
 
 plt.show()
+
 

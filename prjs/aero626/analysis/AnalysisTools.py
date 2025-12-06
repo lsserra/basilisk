@@ -30,12 +30,20 @@ class PoseAnalyzer():
         self._truth_v = None
         self._truth_q = None
         self._truth_t = None
+        self._logical_post_truth = None
 
         self._est_r = None
         self._est_v = None
         self._est_q = None
         self._est_Pxx = None
         self._est_t = None
+
+        self._est_r_post = None
+        self._est_v_post = None
+        self._est_q_post = None
+        self._est_Pxx_post = None
+        self._est_t_post = None
+        self._logical_post_est = None
 
         self._units_r = "km"
         self._units_v = "km/s"
@@ -416,63 +424,151 @@ class PoseAnalyzer():
 
 
 
-    def _extract_posterior(self, est_data):
-        """
-        Extract the posterior (last of 3 solutions per epoch).
-        Expects est_data with shape (N, 3, dim).
-        Returns array of shape (N, dim).
-        """
-        if est_data is None:
-            return None
+    def extract_posterior(self, posteriori_time_array):
+       
 
-        # Always pick the last solution (index 2)
-        if est_data.ndim == 3 and est_data.shape[1] == 3:
-            return est_data[:, 2, :]  
-        else:
-            raise ValueError("Estimator data must have shape (N,3,dim).")
+        unique_post_times = np.unique(posteriori_time_array)
+        
+
+        # get posteriori indicies
+        posterior_indices = []
+
+        for tk in unique_post_times:
+            # find all indices where est_t == tk
+            idxs = np.where(self._est_t == tk)[0]
+            # choose the last one
+            posterior_indices.append(idxs[-1])
+
+        #
+        posterior_indices = np.array(posterior_indices)
+        self._logical_post_est = posterior_indices
+
+        self._est_r_post = self._est_r[self._logical_post_est,:]
+        self._est_v_post = self._est_v[self._logical_post_est,:]
+        self._est_q_post = self._est_q[self._logical_post_est,:]
+        self._est_Pxx_post = self._est_Pxx[self._logical_post_est,:]
+        self._est_t_post = unique_post_times
+
 
     def compute_errors(self):
-        """Compute RMSE and MAE for r, v, q using only posterior states."""
-        if self._truth_t is None or self._est_t is None:
-            raise RuntimeError("Truth and estimate time arrays must be assigned.")
+        """
+        Compute RMSE and MAE for r, v, and q using only posterior solutions.
+        Stores results internally as self._stats dict.
+        """
 
-        # Extract posterior states
-        r_post = self._extract_posterior(self._est_r)
-        v_post = self._extract_posterior(self._est_v)
-        q_post = self._extract_posterior(self._est_q)
+        if (self._truth_r is None or
+            self._truth_v is None or
+            self._truth_q is None or
+            self._est_r_post is None or
+            self._est_v_post is None or
+            self._est_q_post is None):
+            raise ValueError("Truth or posterior estimate arrays missing. Run extract_posterior() first.")
 
-        # Interpolate onto truth time grid
-        r_est = self._interp_to_truth_time(r_post)
-        v_est = self._interp_to_truth_time(v_post)
+        # get posteriori indicies from truth
+        posterior_indices = []
 
-        # Quaternion: nearest-neighbor time matching
-        idx = np.searchsorted(self._est_t, self._truth_t) - 1
-        q_est = q_post[idx]
+        for tk in self._est_t_post:
+            # find all indices where est_t == tk
+            idxs = np.where(self._truth_t == tk)[0]
+            # choose the last one
+            posterior_indices.append(idxs[-1])
 
-        # Compute errors
-        r_err_norm = np.linalg.norm(self._truth_r - r_est, axis=1)
-        v_err_norm = np.linalg.norm(self._truth_v - v_est, axis=1)
-        q_err_deg = self._quat_angle_error(self._truth_q, q_est)
-
-        return {
-            "position": {
-                "RMSE": self._rmse(r_err_norm),
-                "MAE": self._mae(r_err_norm),
-                "units": self._units_r
-            },
-            "velocity": {
-                "RMSE": self._rmse(v_err_norm),
-                "MAE": self._mae(v_err_norm),
-                "units": self._units_v
-            },
-            "attitude": {
-                "RMSE": self._rmse(q_err_deg),
-                "MAE": self._mae(q_err_deg),
-                "units": self._units_att
-            }
-        }
+        posterior_indices = np.array(posterior_indices)
+        self._logical_post_truth = posterior_indices
 
     
+        truth_r = self._truth_r[self._logical_post_truth,:]
+        truth_v = self._truth_v[self._logical_post_truth,:]
+        truth_q = self._truth_q[self._logical_post_truth,:]
+
+        est_r = self._est_r_post
+        est_v = self._est_v_post
+        est_q = self._est_q_post
+
+        # -----------------------
+        #  Position Errors
+        # -----------------------
+        e_r = truth_r - est_r         # (N,3)
+        rmse_r = np.sqrt(np.mean(np.sum(e_r**2, axis=1)))
+        mae_r = np.mean(np.linalg.norm(e_r, axis=1))
+
+        # -----------------------
+        #  Velocity Errors
+        # -----------------------
+        e_v = truth_v - est_v         # (N,3)
+        rmse_v = np.sqrt(np.mean(np.sum(e_v**2, axis=1)))
+        mae_v = np.mean(np.linalg.norm(e_v, axis=1))
+
+        # -----------------------
+        #  Attitude Errors (deg)
+        # -----------------------
+        # compute attitude error as principle rotation vector
+        # body attitude error list
+        PRV_BprimeB_list = []
+        for i in range(self._est_q_post.shape[0]):
+            # compute attitude error and store
+            q_BM_true = Quaternion.from_array(truth_q[i,:]).normalize()
+            q_BM_filt = Quaternion.from_array(self._est_q_post[i,:])
+            prv_BprimeB = Quaternion.computeEulerVecAttErrorFromQuats(
+                q_ref=q_BM_true,
+                q_est=q_BM_filt
+            )
+            PRV_BprimeB_list.append(prv_BprimeB)
+
+        PRV_BprimeB_array = np.rad2deg(np.array(PRV_BprimeB_list))
+
+        rmse_q = np.sqrt(np.mean(PRV_BprimeB_array**2))
+        mae_q = np.mean(np.abs(PRV_BprimeB_array))
+
+        N = len(self._est_t_post)
+
+        # -----------------------
+        # Store results internally
+        # -----------------------
+        self._stats = {
+            "rmse_r": rmse_r,
+            "mae_r": mae_r,
+            "rmse_v": rmse_v,
+            "mae_v": mae_v,
+            "rmse_q_deg": rmse_q,
+            "mae_q_deg": mae_q,
+            "num_samples": N,
+        }
+
+        return self._stats
+
+
+    def write_stats_to_file(self):
+        """
+        Writes the statistics stored in self._stats to a stats.txt file in the data directory.
+        """
+        if not hasattr(self, "_stats"):
+            raise ValueError("No statistics available. Run compute_errors() first.")
+
+        stats_path = os.path.join(self._dataDir, f"{self._solutionName}_stats.txt")
+
+        with open(stats_path, "w") as f:
+            f.write(f"Solution: {self._solutionName}\n")
+            f.write(f"Data Directory: {self._dataDir}\n\n")
+            f.write("Posteriori State Error Statistics\n")
+            f.write("=================================\n\n")
+
+            f.write(f"Number of samples: {self._stats['num_samples']}\n\n")
+
+            f.write("Position Error (" + self._units_r + "):\n")
+            f.write(f"   RMSE = {self._stats['rmse_r']:.6f}\n")
+            f.write(f"   MAE  = {self._stats['mae_r']:.6f}\n\n")
+
+            f.write("Velocity Error (" + self._units_v + "):\n")
+            f.write(f"   RMSE = {self._stats['rmse_v']:.6f}\n")
+            f.write(f"   MAE  = {self._stats['mae_v']:.6f}\n\n")
+
+            f.write("Attitude Error (" + self._units_att + "):\n")
+            f.write(f"   RMSE = {self._stats['rmse_q_deg']:.6f}\n")
+            f.write(f"   MAE  = {self._stats['mae_q_deg']:.6f} \n\n")
+
+        print(f"Statistics saved to: {stats_path}")
+
     
     @staticmethod
     def ComputeResolvedToLVLH_DCM(r_BM_M_truth,v_BM_M_truth,q_BM_truth):
