@@ -7,7 +7,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.
 PATH2SIMDATADIR = "/Users/lukeserrano/repos/personal/basilisk/prjs/aero626/data"
 
 
-runNum = 47
+runNum = 49
 SAVE_FIGURES = True
 
 pth2data = os.path.join(PATH2SIMDATADIR, f"sim-{runNum:04d}")

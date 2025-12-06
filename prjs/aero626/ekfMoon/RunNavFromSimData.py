@@ -68,6 +68,9 @@ def RunNavFromSimData(runDataDir, saveDataBool = True, EKF_ONLY_FLAG = False):
     print("Basilisk Simulation data successfully unboxed.")
 
     ## limit sim time for testing ##
+    # t = 0.1*P = 650.9640763304291
+    t_diff = timeData - 650.9640763304291
+    idxCap = np.where(t_diff > 0.0)[0][0]
     # idxCap = 25
     # idxCap = 125
     # idxCap = 700
@@ -87,7 +90,12 @@ def RunNavFromSimData(runDataDir, saveDataBool = True, EKF_ONLY_FLAG = False):
 
         ## report the time cutoff too!
 
-
+    ## always make t0 =0
+    t0 = timeData[0]
+    timeData = timeData - t0
+    # reset t0
+    t0 = timeData[0]
+    
     ## set measurement update at _ Hz ##
     measFreq = 1.0 # Hz
     simdt = timeData[1] - timeData[0]
@@ -178,8 +186,7 @@ def RunNavFromSimData(runDataDir, saveDataBool = True, EKF_ONLY_FLAG = False):
 
 
     ### intial conditions
-    # time 
-    t0 = timeData[0]
+    
 
 
 
@@ -288,8 +295,7 @@ def RunNavFromSimData(runDataDir, saveDataBool = True, EKF_ONLY_FLAG = False):
             statei.mx = ms[i]
             statei.Pxx = Pxx0
             statei.w = ws[i]
-            statei.t = 0.
-
+            statei.t = t0
             ## trasfer initial attitude and gyro bias error to reference states
             # attitude
             statei.q_BMref = copy.deepcopy(ekf.mx_full.q_BMref)
@@ -656,10 +662,8 @@ if __name__ == "__main__":
 
         # 3. Create empty config files (or write your config content)
         sim_cfg_path = os.path.join(run_dir, SIM_CONFIG_STRING)
-        ekf_cfg_path = os.path.join(run_dir, EKF_CONFIG_STRING)
 
         open(sim_cfg_path, "w").close()
-        open(ekf_cfg_path, "w").close()
         print(f"Created new simulation run directory:\n{run_dir}")
 
     # run main simulation function
