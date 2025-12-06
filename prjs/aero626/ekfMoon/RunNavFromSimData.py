@@ -34,7 +34,7 @@ from prjs.aero626.constants import (
 )
 
 
-def RunNavFromSimData(runDataDir, saveDataBool = True, EKF_ONLY_FLAG = False):
+def RunNavFromSimData(runDataDir, DECOUPLED_FLAG, TRUE_MEAS_FLAG, saveDataBool = True, EKF_ONLY_FLAG = False):
     # initalize random seed 
     random_seed = 42
     # random_seed = None
@@ -56,6 +56,9 @@ def RunNavFromSimData(runDataDir, saveDataBool = True, EKF_ONLY_FLAG = False):
     sim_config_path = os.path.join(runDataDir,"simulation_config.txt")
     with open(sim_config_path, "w") as f:
         f.write(f"Basilisk Pkl File: {SIM_PKL_FILE_STR}\n\n")
+        f.write(f"TRUE MEASUREMENTS FLAG: {TRUE_MEAS_FLAG}\n\n")
+        f.write(f"DECOUPLED TRANS ATT FLAG: {DECOUPLED_FLAG}\n\n")
+
 
     timeData = sim_data["time"] * 1e-9 # to seconds
     sc_pos   = sim_data["sc_pos"] / 1000 # to km
@@ -179,6 +182,7 @@ def RunNavFromSimData(runDataDir, saveDataBool = True, EKF_ONLY_FLAG = False):
     nz = 3
     # ekf object
     ekf = EkfPoseEstimator()
+    ekf._DECOUPLED_FLAG = DECOUPLED_FLAG
     # Process Noise
     psd_r = .0001 # 
     psd_Mdrdt = .001 # 
@@ -338,6 +342,7 @@ def RunNavFromSimData(runDataDir, saveDataBool = True, EKF_ONLY_FLAG = False):
         ## initialize egmf
         egmf._ekf = EkfPoseEstimator()
         egmf._ekf._GMF_FLAG = True
+        egmf._ekf._DECOUPLED_FLAG = DECOUPLED_FLAG
         egmf._ekf.loadLandmarkMap(trueLandmarks) 
 
         # additive process noise
@@ -458,6 +463,7 @@ def RunNavFromSimData(runDataDir, saveDataBool = True, EKF_ONLY_FLAG = False):
                 distanceThresholdKm=relativeDistanceThresholdKm,  #  km
                 trueLandmarks=trueLandmarks,
                 lvlh_oneSigmaArray=lvlh_oneSigmaArrayInput,
+                _TRUE_MEAS_FLAG = TRUE_MEAS_FLAG,
                 maxNumMeasurements=MAX_NUM_LANDMARK_MEAS,
                 randomSeed=random_seed,
                 debugPlot = False
@@ -649,8 +655,8 @@ if __name__ == "__main__":
 
     ## config
     saveDataBool = True
-    showPlotsBool = True
-
+    _TRUE_MEAS_FLAG = False
+    _DECOUPLED_TRANS_MEKF = False
     ekfOnlyFlag = False
     
 
@@ -670,9 +676,12 @@ if __name__ == "__main__":
         open(sim_cfg_path, "w").close()
         print(f"Created new simulation run directory:\n{run_dir}")
 
+
     # run main simulation function
     RunNavFromSimData(
         runDataDir= run_dir,
+        TRUE_MEAS_FLAG=_TRUE_MEAS_FLAG,
+        DECOUPLED_FLAG=_DECOUPLED_TRANS_MEKF,
         saveDataBool=saveDataBool,
         EKF_ONLY_FLAG=ekfOnlyFlag
     )

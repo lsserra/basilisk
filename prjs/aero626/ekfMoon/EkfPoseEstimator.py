@@ -209,6 +209,7 @@ class EkfPoseEstimator():
 
         ## flag for EGMF assistance
         self._GMF_FLAG = False
+        self._DECOUPLED_FLAG = False
         
         # define state sizes
         self.nx_full = 12
@@ -322,6 +323,15 @@ class EkfPoseEstimator():
         self.mekfState_log.append(copy.deepcopy(self.mx_mekf_prior_tk_))
 
         # grab prior error covariance, reference state, and time
+
+        ## If decoupled, diagonal full state covariance
+        if self._DECOUPLED_FLAG:
+            # Upper-right block
+            self.mx_full.Pxx[0:self.nx_posVel, self.nx_posVel:self.nx_posVel+self.nx_mekf] = 0.0
+
+            # Lower-left block
+            self.mx_full.Pxx[self.nx_posVel:self.nx_posVel+self.nx_mekf, 0:self.nx_posVel] = 0.0
+
 
         # --- Full State Propagation --- #
         tkm = self.mx_full.t
@@ -642,6 +652,14 @@ class EkfPoseEstimator():
         self.mx_mekf_post_tk.gyroBiasError_mean = np.zeros((3,1))
         
         self.mx_full.mx[6:] = np.zeros((6,1))
+
+         ## If decoupled, diagonal full state covariance
+        if self._DECOUPLED_FLAG:
+            # Upper-right block
+            self.mx_full.Pxx[0:self.nx_posVel, self.nx_posVel:self.nx_posVel+self.nx_mekf] = 0.0
+
+            # Lower-left block
+            self.mx_full.Pxx[self.nx_posVel:self.nx_posVel+self.nx_mekf, 0:self.nx_posVel] = 0.0
 
 
         # log updated states
