@@ -138,13 +138,15 @@ def run(showPlots, savePkl, EarthAndMoonGrav):
 
 
     # define the simulation inertia
-    # I = [900., 0., 0.,
-    #      0., 800., 0.,
-    #      0., 0., 600.]
-    # scObject.hub.mHub = 750.0  # kg - spacecraft mass
-    I = [1., 0., 0.,
-         0., 1., 0.,
-         0., 0., 1.]
+    I = [900., 0., 0.,
+         0., 800., 0.,
+         0., 0., 600.]
+    scObject.hub.mHub = 750.0  # kg - spacecraft mass
+    # I = [1., 0., 0.,
+    #      0., 1., 0.,
+    #      0., 0., 1.]
+
+    scObject.hub.IHubPntBc_B = unitTestSupport.np2EigenMatrix3d(I)
     
     scObject.hub.r_CN_NInit = rN
     scObject.hub.v_CN_NInit = vN
@@ -152,6 +154,7 @@ def run(showPlots, savePkl, EarthAndMoonGrav):
     # initial tip off
     ### SPACECRAFT
     scObject.hub.sigma_BNInit = rbk.PRV2MRP([macros.D2R*0.0, 0.0, macros.D2R*0.0]) # rbk.C2MRP(np.identity(3))  # sigma_BN_B
+    # scObject.hub.omega_BN_BInit = [macros.D2R*5.0, macros.D2R*20.0, macros.D2R*1.0]  # rad/s - omega_BN_B
     scObject.hub.omega_BN_BInit = [macros.D2R*5.0, macros.D2R*2.0, macros.D2R*1.0]  # rad/s - omega_BN_B
     
 
@@ -239,14 +242,14 @@ def run(showPlots, savePkl, EarthAndMoonGrav):
     # setup the MRP Feedback control module
     mrpControl = mrpFeedback.mrpFeedback()
     mrpControl.ModelTag = "mrpFeedback"
-    scSim.AddModelToTask(simTaskName, mrpControl)
+    # scSim.AddModelToTask(simTaskName, mrpControl)
     mrpControl.K = 3.5
     mrpControl.Ki = -1  # make value negative to turn off integral feedback
     mrpControl.P = 30.0
 
-    mrpControl.K = 0.1         # Reduced Gain for stability testing
-    mrpControl.Ki = 0.1        # Set to 0.0 to turn off integral feedback
-    mrpControl.P = 0.1    
+    # mrpControl.K = 0.1         # Reduced Gain for stability testing
+    # mrpControl.Ki = 0.1        # Set to 0.0 to turn off integral feedback
+    # mrpControl.P = 0.1    
     # mrpControl.integralLimit = 2. / mrpControl.Ki * 0.1
 
     #

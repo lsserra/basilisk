@@ -47,7 +47,11 @@ def RunNavFromSimData(runDataDir, DECOUPLED_FLAG, TRUE_MEAS_FLAG, saveDataBool =
 
 
     # SIM_PKL_FILE_STR = "data/MoonCentralBody_MoonEarthGrav_OnePeriod_LowTipOff_NoController.pkl"
-    SIM_PKL_FILE_STR = "data/MoonCentralBody_MoonEarthGrav_HighTipOff_With_Controller.pkl"
+    # SIM_PKL_FILE_STR = "data/MoonCentralBody_MoonEarthGrav_HighTipOff_With_Controller.pkl"
+    
+    # SIM_PKL_FILE_STR = "data/MoonCentralBody_MoonEarthGrav.pkl"
+    # SIM_PKL_FILE_STR = "data/MoonCentralBody_MoonEarthGrav_HighTip_Ctrlr_Mass.pkl"
+    SIM_PKL_FILE_STR = "data/MoonCentralBody_MoonEarthGrav_OnePeriod_LowTipOff_NoController_Mass.pkl"
 
     with open(SIM_PKL_FILE_STR, "rb") as f:
         sim_data = pickle.load(f)
@@ -123,11 +127,18 @@ def RunNavFromSimData(runDataDir, DECOUPLED_FLAG, TRUE_MEAS_FLAG, saveDataBool =
 
 
     # DCM definition of MCMF frame
+    earthObliquityToEcliptic = 23.44 # deg
+    lunarEarthMoonIncl = 5.14 # deg
+    lunarObliquityToEarthMoonPlane = 6.68 # deg
+
+    angleJ200toMCMF = -earthObliquityToEcliptic-lunarEarthMoonIncl+lunarObliquityToEarthMoonPlane
+
     lunarObliquityToEcliptic = 1.54 # deg
+
 
     zhat = np.array([0.,0.,1.])
     xhat = np.array([1.,0.,0.])
-    mhat3 = DCM.T2(np.deg2rad(lunarObliquityToEcliptic)) @ zhat
+    mhat3 = DCM.T2(np.deg2rad(angleJ200toMCMF)) @ zhat
     xhat1_orthog = xhat - np.dot(xhat,mhat3) * xhat
     rhat1_orthog = xhat1_orthog / np.linalg.norm(xhat1_orthog)
     mhat2 = np.cross(mhat3,rhat1_orthog)
@@ -657,7 +668,7 @@ if __name__ == "__main__":
     saveDataBool = True
     _TRUE_MEAS_FLAG = False
     _DECOUPLED_TRANS_MEKF = False
-    ekfOnlyFlag = False
+    ekfOnlyFlag = True
     
 
 
