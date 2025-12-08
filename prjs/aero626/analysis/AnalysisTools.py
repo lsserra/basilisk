@@ -408,7 +408,7 @@ class PoseAnalyzer():
 
         # --- 4th row: Landmark ID vs time ---
         axs[3].scatter(innTime_array, landmark_ids, marker='o', s=12, color='b')
-        axs[3].set_ylabel("ID")
+        axs[3].set_ylabel("Landmark ID")
         axs[3].grid(True)
         axs[3].set_xlabel(xLabel)
 

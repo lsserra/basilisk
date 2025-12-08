@@ -175,7 +175,7 @@ def run(showPlots, savePkl, EarthAndMoonGrav):
     # Configure gyro noise (rad/s)
     gryoBias = np.deg2rad(0.1) / 3600 # deg/hr to rad/s
     # imu.senRotBias = np.array([0.,0.,0.])
-    senRotNoiseStd = np.sqrt(10)*10**(-7) # rad/sec^(3/2)
+    senRotNoiseStd = np.sqrt(10)*10**(-7) # rad/sec^(1/2)
     # walkBound = 0.01 # rad/s
     PMatrix = np.eye(3)* senRotNoiseStd**2 # cholesky defactorization of noise covariance matrix, drives Gauss Markov Process
     L = np.linalg.cholesky(PMatrix)
@@ -422,10 +422,21 @@ def run(showPlots, savePkl, EarthAndMoonGrav):
     print(f"Gryo STD (rad/s): ")
     print(stdGryo)
     plt.figure(4, figsize=(12, 8))
-    plt.plot(gyroTime * macros.NANO2SEC / P, macros.R2D * gryoAngVel_array, label='IMU (Bounded Random Walk)', alpha=0.7)
-    plt.xlabel('Orbits')
-    plt.ylabel('Angular Velocity (deg/s)')
-    plt.title('IMU Gyro Measurements')
+    plt.plot(gyroTime * macros.NANO2SEC,
+         macros.R2D * gryoAngVel_array[:, 0],
+            label='X', alpha=0.7)
+
+    plt.plot(gyroTime * macros.NANO2SEC,
+            macros.R2D * gryoAngVel_array[:, 1],
+            label='Y', alpha=0.7)
+
+    plt.plot(gyroTime * macros.NANO2SEC,
+            macros.R2D * gryoAngVel_array[:, 2],
+            label='Z', alpha=0.7)
+
+    plt.xlabel('Time [s]')
+    plt.ylabel('Angular Velocity [deg/s]')
+    # plt.title('IMU Gyro Measurements')
     plt.legend()
     plt.grid(True)
 

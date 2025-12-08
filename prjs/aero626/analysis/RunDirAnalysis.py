@@ -7,8 +7,9 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.
 PATH2SIMDATADIR = "/Users/lukeserrano/repos/personal/basilisk/prjs/aero626/data"
 
 
-runNum = 68
+runNum = 79
 SAVE_FIGURES = True
+REPORT_PLOTS = True
 
 pth2data = os.path.join(PATH2SIMDATADIR, f"sim-{runNum:04d}")
 
@@ -30,9 +31,29 @@ if os.path.exists(pklPath):
     egmf_est_gyroBias = data.get('est_gyroBias', None)
 
     egmfPA._solutionName = "EGMF"
+    egmfPA._NO_TITLE_FLAG = REPORT_PLOTS
     egmfPA._EXPORT_FIGURES_FLAG = SAVE_FIGURES
     egmfPA._dataDir = pth2data
+
+
     egmfPA.LoadFromPklFile(pkl_path=pklPath)
+
+    # --- convert km → m for position ---
+    egmfPA._est_r *= 1000
+    egmfPA._truth_r *= 1000
+    egmfPA._units_r = "m"
+
+    # --- convert km/s → m/s for velocity ---
+    egmfPA._est_v *= 1000
+    egmfPA._truth_v *= 1000
+    egmfPA._units_v = "m/s"
+
+    # --- scale the covariance only once ---
+    # position and velocity covariances both scale by (1000^2)
+    egmfPA._est_Pxx[:, :6, :6] *= (1000**2)
+
+
+
     egmfPA.plotTransError3sigma()
     egmfPA.plotAttError3Sigma()
 
@@ -73,10 +94,25 @@ if os.path.exists(pklPath):
     ekf_est_gyroBias = data.get('est_gyroBias', None)
 
     ekfPA._solutionName = "EKF"
-    # ekfPA._NO_TITLE_FLAG = True
+    ekfPA._NO_TITLE_FLAG = REPORT_PLOTS
     ekfPA._EXPORT_FIGURES_FLAG = SAVE_FIGURES
     ekfPA._dataDir = pth2data
     ekfPA.LoadFromPklFile(pkl_path=pklPath)
+
+    # --- convert km → m for position ---
+    ekfPA._est_r *= 1000
+    ekfPA._truth_r *= 1000
+    ekfPA._units_r = "m"
+
+    # --- convert km/s → m/s for velocity ---
+    ekfPA._est_v *= 1000
+    ekfPA._truth_v *= 1000
+    ekfPA._units_v = "m/s"
+
+    # --- scale the covariance only once ---
+    # position and velocity covariances both scale by (1000^2)
+    ekfPA._est_Pxx[:, :6, :6] *= (1000**2)
+
     ekfPA.plotTransError3sigma()
     ekfPA.plotAttError3Sigma()
 
@@ -106,8 +142,10 @@ if os.path.exists(pklPath):
     # pull data
 
     inn_array = data.get('inn_array', None)
+    inn_array *=1000
     inn_t = data.get('inn_t', None)
     inn_cov = data.get('inn_cov', None)
+    inn_cov*=(1000**2)
     inn_lm_id = data.get('inn_lm_id', None)
     meas_noise_one_sigma_lvlh = data.get('meas_noise_one_sigma_lvlh',None)
 
@@ -122,7 +160,7 @@ if os.path.exists(pklPath):
         lvlh_oneSigmaArrayInput = meas_noise_one_sigma_lvlh,
         xLabel="Time [s]",
         title="Landmark Innovations LVLH Frame",
-        unitString = "km",
+        unitString = "m",
         show_measurement_noise=True,
         show_confidence=True,
         figsize=(8,5),

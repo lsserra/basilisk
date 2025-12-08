@@ -49,9 +49,14 @@ def RunNavFromSimData(runDataDir, DECOUPLED_FLAG, TRUE_MEAS_FLAG, saveDataBool =
     # SIM_PKL_FILE_STR = "data/MoonCentralBody_MoonEarthGrav_OnePeriod_LowTipOff_NoController.pkl"
     # SIM_PKL_FILE_STR = "data/MoonCentralBody_MoonEarthGrav_HighTipOff_With_Controller.pkl"
     
+    
+    # SIM_PKL_FILE_STR = "data/MoonCentralBody_MoonGrav_TrueGyro_NoRate_IdentityAtt.pkl"
+    
+    
     # SIM_PKL_FILE_STR = "data/MoonCentralBody_MoonEarthGrav.pkl"
-    # SIM_PKL_FILE_STR = "data/MoonCentralBody_MoonEarthGrav_HighTip_Ctrlr_Mass.pkl"
-    SIM_PKL_FILE_STR = "data/MoonCentralBody_MoonEarthGrav_OnePeriod_LowTipOff_NoController_Mass.pkl"
+    SIM_PKL_FILE_STR = "data/MoonCentralBody_MoonEarthGrav_HighTip_Ctrlr_Mass.pkl"
+    # SIM_PKL_FILE_STR = "data/MoonCentralBody_MoonEarthGrav_OnePeriod_LowTipOff_NoController_Mass.pkl"
+
 
     with open(SIM_PKL_FILE_STR, "rb") as f:
         sim_data = pickle.load(f)
@@ -77,11 +82,12 @@ def RunNavFromSimData(runDataDir, DECOUPLED_FLAG, TRUE_MEAS_FLAG, saveDataBool =
     ## limit sim time for testing ##
     # t = 0.1*P = 650.9640763304291
     t_diff = timeData - 650.9640763304291
+    t_diff = timeData - 200.
     idxCap = np.where(t_diff > 0.0)[0][0]
     # idxCap = 25
     # idxCap = 125
     # idxCap = 700
-    idxCap = 1500
+    # idxCap = 1500
     # idxCap = 4000
     # idxCap = None
     if idxCap is not None:
@@ -668,7 +674,7 @@ if __name__ == "__main__":
     saveDataBool = True
     _TRUE_MEAS_FLAG = False
     _DECOUPLED_TRANS_MEKF = False
-    ekfOnlyFlag = True
+    ekfOnlyFlag = False
     
 
 
