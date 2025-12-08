@@ -253,8 +253,17 @@ class MoonGaussianMixtureModel():
         plt.plot(xEval, ref_pdf, 'k-', linewidth=2, label="Reference Gaussian")
 
         # Plot each Gaussian component
+        colors = plt.cm.viridis(np.linspace(0, 1, len(component_pdfs)))
+
         for idx, pdf_i in enumerate(component_pdfs):
-            plt.plot(xEval, pdf_i, '--', alpha=0.7, label=f"Component {idx+1}")
+            plt.plot(
+                xEval,
+                pdf_i,
+                '--',
+                alpha=0.9,
+                color=colors[idx],
+                label=f"Component {idx+1}"
+            )
 
         # Plot combined GMM pdf
         plt.plot(xEval, mixture_pdf, 'r-', linewidth=2.5, label="GMM Mixture PDF")
@@ -262,9 +271,9 @@ class MoonGaussianMixtureModel():
        
 
         plt.grid(True)
-        plt.xlabel(f"State[{stateIdxOfInterest}]")
-        plt.ylabel("pdf")
-        plt.title("Gaussian Mixture Model – 1D PDF")
+        plt.xlabel(f"x")
+        plt.ylabel("pdf(x)")
+        # plt.title("Gaussian Mixture Model – 1D PDF")
         plt.legend()
         plt.tight_layout()
 
