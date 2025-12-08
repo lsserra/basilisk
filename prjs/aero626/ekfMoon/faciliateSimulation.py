@@ -273,21 +273,21 @@ if __name__ == "__main__":
     # landmarks
     ax.scatter(trueLandmarks[:,0], trueLandmarks[:,1], trueLandmarks[:,2], 
             c='k', s=8, label='True Landmarks')
-    ax.scatter(mapLandmarks[:,0], mapLandmarks[:,1], mapLandmarks[:,2], 
-            c='r', s=8, label='Map Landmarks')
+    # ax.scatter(mapLandmarks[:,0], mapLandmarks[:,1], mapLandmarks[:,2], 
+    #         c='r', s=8, label='Map Landmarks')
 
-    ax.set_xlabel('x [km]')
-    ax.set_ylabel('y [km]')
-    ax.set_zlabel('z [km]')
-    ax.set_title('Generated Landmarks on Lunar Surface')
+    ax.set_xlabel('X [km]')
+    ax.set_ylabel('Y [km]')
+    ax.set_zlabel('Z [km]')
+    # ax.set_title('Generated Landmarks on Lunar Surface')
     
     ax.legend()
     ax.set_box_aspect([1,1,1])
     plt.show()
 
-    # save to file
-    landmarkPicklePath = os.path.join('data', "landmarks.pkl")
-    with open(landmarkPicklePath, "wb") as f:
-        pickle.dump({"trueLandmarks": trueLandmarks, "mapLandmarks": mapLandmarks}, f)
+    # # save to file
+    # landmarkPicklePath = os.path.join('data', "landmarks.pkl")
+    # with open(landmarkPicklePath, "wb") as f:
+    #     pickle.dump({"trueLandmarks": trueLandmarks, "mapLandmarks": mapLandmarks}, f)
 
-    print(f"Saved trueLandmarks and mapLandmarks to {landmarkPicklePath}")
+    # print(f"Saved trueLandmarks and mapLandmarks to {landmarkPicklePath}")

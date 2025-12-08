@@ -127,12 +127,12 @@ if os.path.exists(pklPath):
 
     ekfPA.plot3DimVecError3Sigma(
                                 truth_v=truth_gyroBias,
-                                truth_t=ekfPA._truth_t,
+                                truth_t=ekfPA._truth_t/60,
                                 est_v=ekf_est_gyroBias,
                                 est_Pxx=est_Pxx,
-                                est_t=ekfPA._est_t,
+                                est_t=ekfPA._est_t/60,
                                 strFigureTitle='EKF Gryo Bias Error',
-                                strXlabel='Time [s]',
+                                strXlabel='Time [min]',
                                 strYunits='Deg/Hr'
             
     )
@@ -147,7 +147,7 @@ if os.path.exists(pklPath):
     inn_cov = data.get('inn_cov', None)
     inn_cov*=(1000**2)
     inn_lm_id = data.get('inn_lm_id', None)
-    meas_noise_one_sigma_lvlh = data.get('meas_noise_one_sigma_lvlh',None)
+    meas_noise_one_sigma_lvlh = data.get('meas_noise_one_sigma_lvlh',None) * 1000
 
     ekfPA.plot_landmark_innovations_lvlh(
         innArray = inn_array,
