@@ -88,7 +88,7 @@ class PoseAnalyzer():
         self._tgt_frame      = data.get(PoseAnalyzer.PKL_TGT_FRAME_KEY, "")
         self._resolved_frame = data.get(PoseAnalyzer.PKL_RESOLVED_FRAME_KEY, "")
     
-    def plotTransError3sigma(self):
+    def plotTransError3sigma(self,y_bounds_pos=None, y_bounds_vel=None,figsize=(11,8)):
 
         ############################################
         # Position and Velocity filter state
@@ -123,7 +123,7 @@ class PoseAnalyzer():
         ############################################
         # Plot position and velocity estimation errors
         ############################################
-        fig, axs = plt.subplots(3, 2, figsize=(11, 8), sharex=True)
+        fig, axs = plt.subplots(3, 2, figsize=(figsize[0], figsize[1]), sharex=True)
         pos_labels = ['X', 'Y', 'Z']
         vel_labels = ['X', 'Y', 'Z']
         legend_label = 'Est. Error'
@@ -147,6 +147,9 @@ class PoseAnalyzer():
             axs[i, 0].plot(t_filt, -sigma3_posVel[:, i], 'r--', linewidth=1, label='±3σ confidence')
             axs[i, 0].set_ylabel(f'{pos_labels[i]} [{self._units_r}]')
             axs[i, 0].grid(True)
+            # optional y-axis bounds
+            if y_bounds_pos is not None:
+                axs[i, 0].set_ylim(y_bounds_pos)
             
         axs[0, 0].legend(loc='upper right')
         axs[0,0].set_title(positionTitle)
@@ -158,6 +161,10 @@ class PoseAnalyzer():
             axs[i, 1].plot(t_filt, -sigma3_posVel[:, 3 + i], 'r--', linewidth=1,label='±3σ confidence')
             axs[i, 1].set_ylabel(f'{vel_labels[i]} [{self._units_v}]')
             axs[i, 1].grid(True)
+
+            # optional y-axis bounds
+            if y_bounds_vel is not None:
+                axs[i, 1].set_ylim(y_bounds_vel)
             
         axs[0, 1].legend(loc='upper right')
         axs[0,1].set_title(velocityTitle)
@@ -175,7 +182,7 @@ class PoseAnalyzer():
             print(f"Saved: {out_path}")
         return
     
-    def plotAttError3Sigma(self):
+    def plotAttError3Sigma(self,figsize=(11,8)):
 
         ############################################
         # MEKF filter state
@@ -214,7 +221,7 @@ class PoseAnalyzer():
         ############################################
         # Plot attitude estimation errors
         ############################################
-        fig, axs = plt.subplots(3, 1, figsize=(11, 8), sharex=True)
+        fig, axs = plt.subplots(3, 1, figsize=(figsize[0], figsize[1]), sharex=True)
         body_labels = ['X', 'Y', 'Z']
         legend_label = 'Est. Error'
 
@@ -257,8 +264,9 @@ class PoseAnalyzer():
     def plot3DimVecError3Sigma(self,truth_v, truth_t, est_v, est_Pxx, est_t,
                             strFigureTitle='',
                             strXlabel='',
-                            strYunits=''
-                               ):
+                            strYunits='',
+                            y_bounds = None,
+                            figsize=(11,8)):
 
         ############################################
         # MEKF filter state
@@ -280,7 +288,7 @@ class PoseAnalyzer():
         ############################################
         # Plot attitude estimation errors
         ############################################
-        fig, axs = plt.subplots(3, 1, figsize=(11, 8), sharex=True)
+        fig, axs = plt.subplots(3, 1, figsize=(figsize[0], figsize[1]), sharex=True)
         axis_labels = ['X', 'Y', 'Z']
         legend_label = 'Est. Error'
 
@@ -299,6 +307,11 @@ class PoseAnalyzer():
             axs[i].plot(est_t, (-sigma3[:, i]), 'r--', linewidth=1, label='±3σ confidence')
             axs[i].set_ylabel(f'{axis_labels[i]} [{strYunits}]')
             axs[i].grid(True)
+
+            # optional y-axis bounds
+            if y_bounds is not None:
+                axs[i].set_ylim(y_bounds)
+
         axs[0].legend(loc='upper right')
 
         axs[-1].set_xlabel(strXlabel)
@@ -324,6 +337,7 @@ class PoseAnalyzer():
     est_v,
     est_q_array,
     lvlh_oneSigmaArrayInput,
+    y_bounds=None,
     xLabel="Time [s]",
     title="Landmark Innovations LVLH Frame",
     unitString = "km",
@@ -370,7 +384,7 @@ class PoseAnalyzer():
         innSigmaLvlh_array = np.sqrt(Pzz_diag)
 
         # --- Plot ---
-        fig, axs = plt.subplots(4, 1, figsize=(figsize[0], figsize[1]+2), sharex=True)
+        fig, axs = plt.subplots(4, 1, figsize=(figsize[0], figsize[1]), sharex=True)
         labels = [
         fr"$\hat{{r}}$ {unitString}",
         fr"$\hat{{v}}$ {unitString}",
@@ -388,6 +402,8 @@ class PoseAnalyzer():
 
         for i in range(3):
             axs[i].scatter(innTime_array, innLvlhArray[:, i], marker='x', color='k', label=f'Innovation')
+            if y_bounds is not None:
+                axs[i].set_ylim(y_bounds)
 
             # Optional measurement noise bounds
             if show_measurement_noise:

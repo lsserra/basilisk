@@ -7,7 +7,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.
 PATH2SIMDATADIR = "/Users/lukeserrano/repos/personal/basilisk/prjs/aero626/data"
 
 
-runNum = 79
+runNum = 67
 SAVE_FIGURES = True
 REPORT_PLOTS = True
 
@@ -16,6 +16,16 @@ pth2data = os.path.join(PATH2SIMDATADIR, f"sim-{runNum:04d}")
 
 from prjs.aero626.analysis.AnalysisTools import PoseAnalyzer
 
+# set some y_axis bounds
+in_y_bounds_pos = (-50,50) # m
+in_y_bounds_vel = (-10,10) # m/s
+in_y_bounds_inn = (-60,60) # m
+
+# in_y_bounds_pos = (-400,400) # m
+# in_y_bounds_vel = (-380,380) # m/s
+# in_y_bounds_inn = (-200,200) # m
+# fig size
+in_figsize = (15,10)
 
 ## EGMF
 egmfPA = PoseAnalyzer()
@@ -54,8 +64,10 @@ if os.path.exists(pklPath):
 
 
 
-    egmfPA.plotTransError3sigma()
-    egmfPA.plotAttError3Sigma()
+    egmfPA.plotTransError3sigma(y_bounds_pos=in_y_bounds_pos,
+                                y_bounds_vel=in_y_bounds_vel,
+                                figsize=in_figsize)
+    egmfPA.plotAttError3Sigma(figsize=in_figsize)
 
     # gyro bias plot 
     # rad to deg
@@ -72,7 +84,8 @@ if os.path.exists(pklPath):
                                 est_t=egmfPA._est_t,
                                 strFigureTitle='EGMF Gryo Bias Error',
                                 strXlabel='Time [s]',
-                                strYunits='[Deg/Hr]'
+                                strYunits='[Deg/Hr]',
+                                figsize=in_figsize
             
     )
 
@@ -113,8 +126,10 @@ if os.path.exists(pklPath):
     # position and velocity covariances both scale by (1000^2)
     ekfPA._est_Pxx[:, :6, :6] *= (1000**2)
 
-    ekfPA.plotTransError3sigma()
-    ekfPA.plotAttError3Sigma()
+    ekfPA.plotTransError3sigma(y_bounds_pos=in_y_bounds_pos,
+                                y_bounds_vel=in_y_bounds_vel,
+                                figsize=in_figsize)
+    ekfPA.plotAttError3Sigma(figsize=in_figsize)
 
 
     # gyro bias plot 
@@ -133,7 +148,8 @@ if os.path.exists(pklPath):
                                 est_t=ekfPA._est_t/60,
                                 strFigureTitle='EKF Gryo Bias Error',
                                 strXlabel='Time [min]',
-                                strYunits='Deg/Hr'
+                                strYunits='Deg/Hr',
+                                figsize=in_figsize
             
     )
 
@@ -158,12 +174,13 @@ if os.path.exists(pklPath):
         est_v = ekfPA._est_v,
         est_q_array = ekfPA._est_q,
         lvlh_oneSigmaArrayInput = meas_noise_one_sigma_lvlh,
+        y_bounds=in_y_bounds_inn,
         xLabel="Time [s]",
         title="Landmark Innovations LVLH Frame",
         unitString = "m",
         show_measurement_noise=True,
         show_confidence=True,
-        figsize=(8,5),
+        figsize=in_figsize,
         _PLOT_BODY = False
         )
 
